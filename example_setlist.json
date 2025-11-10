@@ -1,0 +1,18 @@
+{
+  "base_path": "/path/to/your/songs/root/folder",
+  "description": "Instructions: 1) Update base_path to point to your songs folder (use forward slashes /). 2) Add your songs with relative paths from base_path.",
+  "songs": [
+    {
+      "name": "Song 1",
+      "path": "subfolder/song1.rpp"
+    },
+    {
+      "name": "Song 2",
+      "path": "subfolder/song2.rpp"
+    },
+    {
+      "name": "Song 3",
+      "path": "subfolder/song3.rpp"
+    }
+  ]
+}
