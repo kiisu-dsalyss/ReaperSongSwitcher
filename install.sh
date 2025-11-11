@@ -1,6 +1,5 @@
 #!/bin/bash
-# Universal Reaper Song Switcher Installation Script (macOS & Linux)
-# Automatically detects OS and runs Python installer
+# Reaper Song Switcher Installation Script (macOS & Linux)
 
 set -e
 
@@ -8,19 +7,39 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=================================================="
-echo "🎵 Reaper Song Switcher - Universal Installer"
+echo "🎵 Reaper Song Switcher - Installer"
 echo "=================================================="
 echo ""
 
-# Check if Python 3 is available
-if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 is not installed or not in PATH"
-    echo "Please install Python 3 and try again"
-    exit 1
+# Determine OS
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    REAPER_SCRIPTS="$HOME/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher"
+else
+    REAPER_SCRIPTS="$HOME/.config/REAPER/Scripts/ReaperSongSwitcher"
 fi
 
-echo "✅ Found Python 3: $(python3 --version)"
-echo ""
+echo "📁 Installing to: $REAPER_SCRIPTS"
 
-# Run the Python installer
-python3 "$SCRIPT_DIR/install.py"
+# Create the directory if it doesn't exist
+mkdir -p "$REAPER_SCRIPTS"
+
+# Copy the main script
+cp "$SCRIPT_DIR/switcher.lua" "$REAPER_SCRIPTS/switcher.lua"
+echo "✅ Installed switcher.lua"
+
+# Copy example setlist if not present
+if [ ! -f "$REAPER_SCRIPTS/setlist.json" ]; then
+    cp "$SCRIPT_DIR/example_setlist.json" "$REAPER_SCRIPTS/setlist.json"
+    echo "✅ Created setlist.json from example"
+else
+    echo "ℹ️  setlist.json already exists, not overwriting"
+fi
+
+echo ""
+echo "=================================================="
+echo "✅ Installation complete!"
+echo "=================================================="
+echo ""
+echo "📝 Edit setlist.json to add your songs"
+echo "🎵 Run switcher.lua from REAPER Scripts menu"
+echo ""

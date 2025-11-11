@@ -1,22 +1,20 @@
 # Reaper Song Switcher
 
-A Python-based script for automatically switching between songs in a Reaper setlist during live performances. Perfect for backing track-based live sets where you need seamless transitions between pre-arranged songs.
+A Lua script for automatically switching between songs in a Reaper setlist during live performances. Perfect for backing track-based live sets where you need seamless transitions between pre-arranged songs.
 
 ## Features
 
-- **🔄 Automatic Song Switching**: Monitors playback and automatically switches to the next song when the current one reaches its end marker
-- **🎵 ImGui Dockable UI**: Professional dockable window with real-time status and intuitive controls
-- **⏩⏪ Skip Controls**: Skip forward/backward through your setlist during performance
-- **🎶 Setlist Reordering**: Reorder songs during the performance via drag-and-drop (changes are saved)
+- **🔄 Automatic Song Switching**: Monitors playback and automatically switches to the next song when the current one loops back to the start
+- **🎵 No Recording Trigger**: Works with armed tracks (required for vocal input routing) without accidentally triggering recording
+- **⏸️ Clean Stop**: Stops playback after the last song in setlist (doesn't loop back)
 - **📁 Relative Path Support**: Portable setlist configuration that works across different systems
-- **🎯 End Marker Detection**: Uses Reaper markers to determine exact song end points
-- **❌ Error Handling**: Automatically pauses and alerts when file loading issues occur
-- **📝 Console Logging**: Detailed real-time logging for debugging and monitoring
-- **🎤 Live Performance Ready**: Designed for backing track scenarios with external MIDI signal handling
+- **🎯 Loop Detection**: Automatically detects when a song loops and switches to the next one
+- **📝 Console Logging**: Real-time logging for monitoring playback and switches
+- **🎤 Live Performance Ready**: Designed for backing track scenarios with armed tracks
 
 ## Setup
 
-### 1. Automatic Installation (Recommended)
+### 1. Installation
 
 **macOS & Linux:**
 ```bash
@@ -29,75 +27,62 @@ bash install.sh
 Double-click: install.bat
 ```
 
-The installer will:
-- Automatically detect your OS
-- Find or create your Reaper Scripts directory
-- Copy the Song Switcher folder
-- Verify all files are in place
-- Provide next steps
+### 2. Configuration
 
-### 2. Manual Installation
+Edit `setlist.json`:
+```json
+{
+  "base_path": "/full/path/to/your/songs/folder",
+  "songs": [
+    {
+      "name": "Song 1 Display Name",
+      "path": "relative/path/to/song1.rpp"
+    },
+    {
+      "name": "Song 2 Display Name", 
+      "path": "relative/path/to/song2.rpp"
+    }
+  ]
+}
+```
 
-If the automatic installer doesn't work:
+- **base_path**: Full path to your songs root folder
+- **name**: Display name shown in logs
+- **path**: Relative path from base_path
 
-1. Copy the entire `ReaperSongSwitcher` folder to your Reaper Scripts directory:
-   - **macOS**: `~/Library/Application Support/REAPER/Scripts/`
-   - **Windows**: `%AppData%\REAPER\Scripts\`
-   - **Linux**: `~/.config/REAPER/Scripts/`
+### 3. How It Works
 
-### 3. Setlist Configuration
+1. Load `switcher.lua` from Reaper's Script menu
+2. First song automatically loads and starts playing
+3. When a song loops (position jumps back to start), the script:
+   - Stops playback
+   - Loads the next song
+   - Waits 1 frame (gives Reaper time to settle)
+   - Starts playback
+4. After the last song loops, playback stops
 
-1. Edit the `setlist.json` file:
-   ```json
-   {
-     "base_path": "/path/to/your/songs/folder",
-     "songs": [
-       {
-         "name": "Display Name",
-         "path": "Relative/Path/To/song.rpp"
-       }
-     ]
-   }
-   ```
-   - **base_path**: Full path to your songs root folder (use forward slashes even on Windows)
-   - **name**: Display name shown in the UI and logs
-   - **path**: Relative path from base_path
+### 4. Requirements
 
-2. Example configuration:
-   ```json
-   {
-     "base_path": "/path/to/your/songs",
-     "songs": [
-       {
-         "name": "Song Name",
-         "path": "Song Folder/song_file.RPP"
-       }
-     ]
-   }
-   ```
+- Reaper 6.20+ (tested on recent versions)
+- `setlist.json` in the same folder as the script
+- Song project files (.rpp) all contain loops that restart from the beginning
 
-### 3. Song Project Setup
+## Troubleshooting
 
-For each song project file (`.rpp`):
+**Songs not switching?**
+- Check `setlist.json` format is valid
+- Verify `base_path` is correct
+- Make sure songs loop (position jumps from end back to start)
+- Check Reaper console for error messages
 
-1. Open the project in Reaper
-2. Add a marker at the exact point where the song ends (before any loop)
-3. **Name the marker `End`** (case-insensitive)
-4. Save the project
+**Recording triggers when it shouldn't?**
+- The script uses a 1-frame wait after loading before playing to prevent this
+- Make sure armed tracks are configured for input, not monitoring
 
-**Example**: If your song is 3:45 long with a loop at the start, place the "End" marker at position 3:45.
+**Script doesn't start?**
+- Run `bash install.sh` to reinstall
+- Check that switcher.lua is in: `~/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher/` (macOS)
 
-### 4. Auto-Start Configuration
-
-To have the script automatically run when you open Reaper:
-
-1. In Reaper: `Actions > Show action list...`
-2. Create a new action set that loads the switcher script
-3. In `Options > Startup actions`, add your script action
-
-Or manually each session:
-1. `Script > Load ReaperSongSwitcher/switcher.py`
-2. The script will auto-load the first song and begin waiting for playback
 
 ## Usage
 

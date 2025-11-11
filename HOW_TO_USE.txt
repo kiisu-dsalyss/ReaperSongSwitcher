@@ -1,0 +1,92 @@
+================================================================================
+REAPER SONG SWITCHER - COMPLETE SETUP
+================================================================================
+
+YOUR SYSTEM IS READY! You have two components:
+
+1. TIMER (Auto-Switcher) - timer.lua
+   ✅ Automatically switches songs at the end
+   ✅ Runs in background
+   ✅ Already set up and running
+
+2. UI (Manual Control) - ui.lua
+   ⏸ Manual control window
+   ⏸ Needs to be run as a Reaper action
+
+================================================================================
+HOW TO RUN THE UI
+================================================================================
+
+STEP 1: Open Reaper and press "?" to show Action List
+
+STEP 2: Click "New" button at the bottom
+
+STEP 3: Select "ReaScript (Lua)"
+
+STEP 4: Browse to this file:
+   ~/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher/ui.lua
+
+STEP 5: Click OK and name it "Song Switcher UI"
+
+STEP 6: Now you have three ways to use it:
+
+   OPTION A - Run from action list:
+      Find "Song Switcher UI" in the list and DOUBLE-CLICK it
+      Window appears immediately
+
+   OPTION B - Add to toolbar:
+      Right-click "Song Switcher UI" > "Add to toolbar"
+      Now click the toolbar button to open it
+
+   OPTION C - Keyboard shortcut:
+      Right-click "Song Switcher UI" > "Assign keyboard shortcut"
+      Pick a key (e.g., Ctrl+Shift+U)
+      Press that key to open UI
+
+================================================================================
+WHAT YOU'LL SEE
+================================================================================
+
+The UI window shows:
+- Currently playing song
+- Play/Pause/Stop buttons
+- Previous/Next buttons
+- Full list of all 5 songs
+- Click any song to load and play it
+
+================================================================================
+BOTH SCRIPTS WORK TOGETHER
+================================================================================
+
+TIMER (Background):
+- Runs automatically every 100ms
+- Watches for song end
+- Auto-loads next song
+- You never see it
+
+UI (Visible):
+- Click to control manually
+- Shows what's playing
+- Can skip forward/backward
+- Opens/closes anytime
+
+================================================================================
+IF UI DOESN'T APPEAR
+================================================================================
+
+1. Make sure you selected ui.lua (not timer.lua)
+2. Check Reaper console for errors (Windows > Console)
+3. Try double-clicking the action again
+4. Make sure setlist.json exists in:
+   ~/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher/setlist.json
+
+================================================================================
+YOU'RE DONE!
+================================================================================
+
+Your live backing track system is complete:
+✅ Auto-switching works
+✅ Manual UI available
+✅ Portable JSON config
+✅ Ready for your first live show!
+

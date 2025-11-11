@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Reaper Song Switcher - Live Performance Backing Track Manager
 Automatically switches between songs in a setlist based on end markers.
 
 Features:
 - Automatic song switching at end markers
-- ImGui dockable window UI with skip/reorder controls
+- Skip forward/backward controls
 - Relative path support for portability
 - Console logging and status display
 
@@ -18,27 +19,23 @@ import json
 import os
 import sys
 from pathlib import Path
+from ctypes import c_double, c_int, c_char_p
 
-# Reaper API
+# Try to import gfx for persistent window loop
 try:
-    from reaper_python import *
-except ImportError:
-    pass
-
-# ImGui support
-try:
-    import imgui
-    from imgui.integrations.glfw import GlfwRenderer
-    IMGUI_AVAILABLE = True
-except ImportError:
-    IMGUI_AVAILABLE = False
+    import gfx
+    HAS_GFX = True
+except:
+    HAS_GFX = False
 
 
 class SongSwitcher:
     """Manages automatic song switching for live performance setlists"""
     
     def __init__(self):
-        self.script_dir = Path(__file__).parent.resolve()
+        # In Reaper, __file__ may not be defined, so use a fixed path
+        script_dir = os.path.expanduser("~/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher")
+        self.script_dir = Path(script_dir)
         self.setlist_path = self.script_dir / "setlist.json"
         self.base_path = None  # Will be loaded from JSON
         self.setlist = None
@@ -49,28 +46,23 @@ class SongSwitcher:
         self.switched = False  # Flag to prevent multiple switches
         self.error_state = False
         self.error_message = ""
-        
-        # UI state
-        self.show_ui = True
-        self.selected_song = 0
-        self.dragging_song = -1
-        self.ui_window_visible = True
+        self.last_pos = 0  # Track last position to detect looping
         
         self.log("=" * 60)
         self.log("Reaper Song Switcher Initialized")
         self.log(f"Script directory: {self.script_dir}")
         self.log("=" * 60)
-        
+    
     def log(self, message):
         """Log message to Reaper console"""
         RPR_ShowConsoleMsg(f"[SongSwitcher] {message}\n")
-        
+    
     def resolve_path(self, relative_path):
         """Resolve relative path to absolute path"""
         if os.path.isabs(relative_path):
             return relative_path
         return os.path.join(str(self.base_path), relative_path)
-        
+    
     def load_setlist(self):
         """Load the setlist from JSON file"""
         try:
@@ -155,12 +147,18 @@ class SongSwitcher:
             self.log(f"Loading song {index + 1}/{len(self.setlist)}: {song_name}")
             self.log(f"  Path: {song_path}")
             
-            # Open the project file
-            RPR_OpenProject(song_path)
+            # Open the project file - use Main_openProject with correct calling convention
+            # RPR_Main_openProject takes the file path and returns the project
+            try:
+                RPR_Main_openProject(0, song_path)
+            except TypeError:
+                # Try alternate signature
+                RPR_Main_openProject(song_path)
             
             self.current_song_index = index
             self.song_loaded = True
             self.switched = False
+            self.last_pos = 0  # Reset position tracker
             self.end_marker_position = self.find_end_marker()
             
             if self.end_marker_position is None:
@@ -178,21 +176,82 @@ class SongSwitcher:
             return False
     
     def find_end_marker(self):
-        """Find the 'End' marker in the current project"""
+        """Find the 'End' region in the current project by parsing the .RPP file directly"""
         try:
-            marker_count = RPR_CountMarkers()
+            result = RPR_CountProjectMarkers(None, 0, 0)
+            if isinstance(result, tuple):
+                region_count = result[0]
+            else:
+                region_count = result
             
-            for i in range(marker_count):
-                retval = RPR_EnumMarkers(i)
-                if retval:
-                    marker_index, marker_pos, marker_rgnidx, marker_name, marker_color = retval
-                    if marker_name.lower() == "end":
-                        return marker_pos
+            self.log(f"DEBUG: Found {region_count} regions in project")
             
+            # Get project path using an output parameter
+            try:
+                proj_path_out = [""]
+                RPR_GetProjectPath(None, proj_path_out)
+                proj_fn = proj_path_out[0] if proj_path_out else None
+            except:
+                # Fallback: try to get from the currently loaded file
+                # The song path should be in self.setlist
+                song = self.setlist[self.current_song_index]
+                proj_fn = self.resolve_path(song.get("path", ""))
+            
+            self.log(f"DEBUG: Current project path: {proj_fn}")
+            
+            # Parse the .RPP file directly to find region names
+            if proj_fn and os.path.exists(proj_fn):
+                try:
+                    import re
+                    with open(proj_fn, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = f.readlines()
+                    
+                    # Reaper stores regions as MARKER entries in the .RPP file
+                    # Format: MARKER 2 <position> <name> [other fields...]
+                    # Type 1 = marker, Type 2 = region
+                    # Example: MARKER 2 270 End 8 0 1 B {...} 0
+                    
+                    region_positions = {}
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if line.startswith('MARKER'):
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                marker_type = parts[1]
+                                try:
+                                    position = float(parts[2])
+                                    # Name can be quoted or unquoted
+                                    name = parts[3]
+                                    # Remove quotes if present
+                                    if name.startswith('"') and '"' in name[1:]:
+                                        name = name.split('"')[1]
+                                    
+                                    # Type 2 is region
+                                    if marker_type == '2':
+                                        region_positions[name] = position
+                                        self.log(f"DEBUG: Found region '{name}' at position {position}")
+                                except (ValueError, IndexError):
+                                    pass
+                    
+                    # Look for "End" region (case-insensitive)
+                    for name, pos in region_positions.items():
+                        if name.lower() == "end":
+                            self.log(f"DEBUG: Found 'End' region at position {pos}")
+                            return pos
+                    
+                    self.log(f"DEBUG: Found {len(region_positions)} regions total, but no 'End' region")
+                    
+                except Exception as parse_e:
+                    self.log(f"DEBUG: Error parsing file: {type(parse_e).__name__}: {str(parse_e)}")
+            else:
+                self.log(f"DEBUG: Project file not found or invalid: {proj_fn}")
+            
+            self.log(f"DEBUG: No 'End' region found")
             return None
         
         except Exception as e:
-            self.log(f"ERROR finding end marker: {str(e)}")
+            self.log(f"ERROR finding end region: {str(e)}")
             return None
     
     def format_time(self, position):
@@ -205,8 +264,8 @@ class SongSwitcher:
     def start_playback(self):
         """Start playback of the current song"""
         try:
-            RPR_GoToStartOfFile()
-            RPR_Play()
+            # Use action command to play (40044 is the standard play action)
+            RPR_Main_OnCommand(40044, 0)
             self.is_playing = True
             self.log(f"Starting playback of song {self.current_song_index + 1}")
         except Exception as e:
@@ -217,7 +276,8 @@ class SongSwitcher:
     def stop_playback(self):
         """Stop playback"""
         try:
-            RPR_Stop()
+            # Use action command to stop (40046 is the standard stop action)
+            RPR_Main_OnCommand(40046, 0)
             self.is_playing = False
             self.log("Playback stopped")
         except Exception as e:
@@ -281,134 +341,6 @@ class SongSwitcher:
             self.log(f"ERROR: {self.error_message}")
             return False
     
-    def reorder_songs(self, from_index, to_index):
-        """Reorder songs in the setlist"""
-        try:
-            if from_index < 0 or from_index >= len(self.setlist):
-                return False
-            if to_index < 0 or to_index >= len(self.setlist):
-                return False
-            
-            song = self.setlist.pop(from_index)
-            self.setlist.insert(to_index, song)
-            
-            # Update current song index if needed
-            if self.current_song_index == from_index:
-                self.current_song_index = to_index
-            elif from_index < self.current_song_index <= to_index:
-                self.current_song_index -= 1
-            elif to_index <= self.current_song_index < from_index:
-                self.current_song_index += 1
-            
-            # Save updated setlist
-            self.save_setlist()
-            self.log(f"Reordered: moved song from position {from_index + 1} to {to_index + 1}")
-            return True
-        
-        except Exception as e:
-            self.log(f"ERROR reordering songs: {str(e)}")
-            return False
-    
-    def save_setlist(self):
-        """Save the current setlist to JSON file"""
-        try:
-            data = {"songs": self.setlist}
-            with open(self.setlist_path, 'w') as f:
-                json.dump(data, f, indent=2)
-            self.log("Setlist saved")
-        except Exception as e:
-            self.log(f"ERROR saving setlist: {str(e)}")
-    
-    def draw_ui(self):
-        """Draw the ImGui dockable window"""
-        if not IMGUI_AVAILABLE:
-            return
-        
-        try:
-            ctx = reaper.imgui_get_context()
-            if not ctx:
-                return
-            
-            reaper.imgui_set_next_window_size(450, 550, 1)  # ImGuiCond_FirstUseEver = 1
-            visible, opened = reaper.ImGui_Begin(ctx, "Song Switcher##switcher", True)
-            
-            if not visible:
-                reaper.ImGui_End(ctx)
-                return
-            
-            # Current song info section
-            if self.error_state:
-                reaper.ImGui_PushStyleColor(ctx, 0, (1.0, 0.0, 0.0, 1.0))  # ImGuiCol_Text
-                reaper.ImGui_Text(ctx, f"ERROR: {self.error_message}")
-                reaper.ImGui_PopStyleColor(ctx)
-            else:
-                if self.song_loaded:
-                    song_name = self.setlist[self.current_song_index].get("name", "Unknown")
-                    status = "▶ Playing" if self.is_playing else "⏸ Stopped"
-                    
-                    reaper.ImGui_PushStyleColor(ctx, 0, (0.0, 1.0, 0.0, 1.0))
-                    reaper.ImGui_Text(ctx, f"Now: {song_name}")
-                    reaper.ImGui_PopStyleColor(ctx)
-                    
-                    reaper.ImGui_Text(ctx, f"Status: {status}")
-                    reaper.ImGui_Text(ctx, f"Position: {self.current_song_index + 1}/{len(self.setlist)}")
-                    
-                    if self.end_marker_position is not None and self.is_playing:
-                        try:
-                            current_pos = RPR_GetPlayPosition()
-                            reaper.ImGui_Text(ctx, f"Time: {self.format_time(current_pos)} / {self.format_time(self.end_marker_position)}")
-                        except:
-                            pass
-                else:
-                    reaper.ImGui_Text(ctx, "No song loaded")
-            
-            reaper.ImGui_Separator(ctx)
-            
-            # Control buttons
-            reaper.ImGui_Text(ctx, "Controls:")
-            
-            # Button row
-            if reaper.ImGui_Button(ctx, "◀ Skip Back"):
-                self.skip_backward()
-            reaper.ImGui_SameLine(ctx)
-            
-            if self.is_playing:
-                if reaper.ImGui_Button(ctx, "⏸ Pause"):
-                    self.stop_playback()
-            else:
-                if reaper.ImGui_Button(ctx, "▶ Play"):
-                    self.start_playback()
-            reaper.ImGui_SameLine(ctx)
-            
-            if reaper.ImGui_Button(ctx, "Skip Next ▶"):
-                self.skip_forward()
-            
-            reaper.ImGui_Separator(ctx)
-            
-            # Setlist section
-            reaper.ImGui_Text(ctx, "Setlist (Drag to reorder):")
-            
-            # Setlist child window
-            reaper.ImGui_BeginChild(ctx, "setlist_child", 0, 300)
-            
-            for i, song in enumerate(self.setlist):
-                song_name = song.get("name", "Unknown")
-                
-                # Highlight current song
-                if i == self.current_song_index:
-                    reaper.ImGui_PushStyleColor(ctx, 0, (0.0, 1.0, 0.0, 1.0))
-                    reaper.ImGui_Text(ctx, f"▶ {i + 1}. {song_name}")
-                    reaper.ImGui_PopStyleColor(ctx)
-                else:
-                    reaper.ImGui_Text(ctx, f"  {i + 1}. {song_name}")
-            
-            reaper.ImGui_EndChild(ctx)
-            
-            reaper.ImGui_End(ctx)
-        
-        except Exception as e:
-            self.log(f"ERROR in draw_ui: {str(e)}")
-    
     def get_status(self):
         """Get current status as a formatted string"""
         if self.error_state:
@@ -421,14 +353,13 @@ class SongSwitcher:
         playing_status = "Playing" if self.is_playing else "Paused"
         
         try:
-            play_pos = RPR_GetPlayPosition()
+            play_pos = RPR_GetPlayPosition2Ex(0)
             if self.end_marker_position:
                 time_str = f"{self.format_time(play_pos)} / {self.format_time(self.end_marker_position)}"
             else:
                 time_str = self.format_time(play_pos)
             
             return f"Song {self.current_song_index + 1}/{len(self.setlist)}: {song_name} - {playing_status} - {time_str}"
-        
         except Exception as e:
             return f"Song {self.current_song_index + 1}/{len(self.setlist)}: {song_name} - {playing_status}"
     
@@ -436,26 +367,40 @@ class SongSwitcher:
         """Main update loop - called periodically by Reaper defer"""
         try:
             # Check if playback is still running
-            is_currently_playing = RPR_GetPlayState() == 1
+            is_currently_playing = RPR_GetPlayStateEx(0) == 1
             self.is_playing = is_currently_playing
-            
-            # If not playing and a song should be loaded, something stopped it
-            if not is_currently_playing and self.song_loaded and not self.switched:
-                self.switched = True
-                return
             
             # If we have a song loaded and an end marker
             if self.song_loaded and self.end_marker_position is not None and self.is_playing:
-                current_pos = RPR_GetPlayPosition()
+                current_pos = RPR_GetPlayPosition2Ex(0)
                 
-                # Check if we've passed the end marker (and not already switched)
-                if current_pos >= self.end_marker_position and not self.switched:
+                # Debug: show position periodically (every 5 seconds or so)
+                if int(current_pos) % 5 == 0 and current_pos != self.last_pos:
+                    self.log(f"DEBUG: pos={current_pos:.2f}, end={self.end_marker_position:.2f}, switched={self.switched}")
+                
+                # Detect if we've looped (position went backwards, or jumped from high to low)
+                # When a song loops in Reaper, the position can either:
+                # 1. Jump backwards (last_pos > 200, current_pos < 10)
+                # 2. Go to exactly 0
+                # 3. Reset to a small value when reaching project end
+                
+                backwards_jump = (self.last_pos > 50 and current_pos < 10)  # Significant backwards jump
+                loop_from_end = (self.last_pos > self.end_marker_position - 5 and current_pos < 5)  # Near end, now at start
+                
+                if (backwards_jump or loop_from_end) and not self.switched:
+                    self.log(f"DEBUG: Loop detected!")
+                    self.log(f"  last_pos={self.last_pos:.2f}, current_pos={current_pos:.2f}")
+                    self.log(f"  backwards_jump={backwards_jump}, loop_from_end={loop_from_end}")
                     self.switched = True
                     self.switch_to_next_song()
-            
-            # Draw UI if available
-            if IMGUI_AVAILABLE:
-                self.draw_ui()
+                
+                # Also check if we've reached the end marker
+                elif current_pos >= self.end_marker_position and not self.switched:
+                    self.log(f"DEBUG: End marker reached! current_pos={current_pos}, end_marker={self.end_marker_position}")
+                    self.switched = True
+                    self.switch_to_next_song()
+                
+                self.last_pos = current_pos
         
         except Exception as e:
             self.error_state = True
@@ -495,22 +440,57 @@ def update_loop():
     
     if switcher is None:
         initialize()
-    
-    switcher.update()
+    else:
+        switcher.update()
 
 
 def main():
     """Entry point for the script"""
     global switcher
     
-    initialize()
+    # Initialize switcher on first call
+    if switcher is None:
+        switcher = SongSwitcher()
+        
+        # Load setlist
+        if not switcher.load_setlist():
+            switcher.error_state = True
+            return
+        
+        # Load first song
+        if not switcher.load_song(0):
+            switcher.error_state = True
+            return
+        
+        # Start playback
+        switcher.start_playback()
+        
+        switcher.log("Initialization complete")
+        switcher.log("")
+        switcher.log("=" * 70)
+        switcher.log("NEXT STEP - Set up continuous monitoring:")
+        switcher.log("")
+        switcher.log("1. Open Reaper's Actions list: ? > Show action list")
+        switcher.log("2. At the bottom, click 'New' button")
+        switcher.log("3. Set to type: ReaScript (Python)")
+        switcher.log("4. Paste this script path into the action")
+        switcher.log("5. Name it: 'SongSwitcher - Update'")
+        switcher.log("6. Click OK to save")
+        switcher.log("")
+        switcher.log("7. Right-click the new action > Set to repeat every X ms")
+        switcher.log("8. Set to 100 ms (or use the timer approach below)")
+        switcher.log("")
+        switcher.log("OR set up a timer action:")
+        switcher.log("- Assign this action to a toolbar button")
+        switcher.log("- Hold down the button to keep it updating")
+        switcher.log("- Or create a timed keystroke that repeats")
+        switcher.log("=" * 70)
+        return
     
-    # Setup defer loop for continuous updates (check every 100ms)
-    def defer_callback():
-        update_loop()
-        RPR_Defer(defer_callback)
-    
-    RPR_Defer(defer_callback)
+    # This code runs if the script is called again after initialization
+    # Each call to the script performs one update
+    if switcher is not None:
+        switcher.update()
 
 
 # Auto-start if script is run
