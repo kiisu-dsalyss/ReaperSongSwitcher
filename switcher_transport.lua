@@ -26,34 +26,46 @@ local PREFERRED_FONT = "Menlo"
 
 ss.config_file = ss.script_dir .. "/config.json"
 ss.current_font = PREFERRED_FONT  -- Will be loaded from config
+ss.ui_font_size = 24  -- Will be loaded from config
 
 function ss.load_config()
     local f = io.open(ss.config_file, "r")
     if not f then
         -- Create default config
-        ss.log_file("Creating default config.json")
+        ss.log_transport("Creating default config.json")
         return false
     end
     local content = f:read("*a")
     f:close()
     
-    -- Simple JSON parsing for ui_font
+    -- Simple JSON parsing for ui_font and ui_font_size
     local font_match = string.match(content, '"ui_font"%s*:%s*"([^"]+)"')
     if font_match then
         ss.current_font = font_match
-        ss.log_file("Loaded font from config: " .. ss.current_font)
+        ss.log_transport("Loaded font from config: " .. ss.current_font)
     end
+    
+    local size_match = string.match(content, '"ui_font_size"%s*:%s*(%d+)')
+    if size_match then
+        ss.ui_font_size = tonumber(size_match)
+        ss.log_transport("Loaded font size from config: " .. ss.ui_font_size)
+    else
+        ss.ui_font_size = 24  -- Default
+    end
+    
     return true
 end
 
-function ss.save_config(font_name)
-    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
+function ss.save_config(font_name, font_size)
+    font_size = font_size or ss.ui_font_size or 24
+    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "ui_font_size": ' .. font_size .. ',\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
     local f = io.open(ss.config_file, "w")
     if f then
         f:write(content)
         f:close()
         ss.current_font = font_name
-        ss.log_file("Saved font config: " .. font_name)
+        ss.ui_font_size = font_size
+        ss.log_file("Saved font config: " .. font_name .. " (size: " .. font_size .. ")")
     end
 end
 
@@ -505,6 +517,55 @@ function ss.ui.draw()
         ss.show_font_picker = true
     end
     
+    -- Font size +/- buttons
+    local font_size_y = 15
+    local btn_w = 20
+    local btn_h = 20
+    local minus_x = gear_btn_x - btn_w - 8
+    local plus_x = gear_btn_x - (btn_w * 2) - 16
+    
+    -- Minus button
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(minus_x, font_size_y, btn_w, btn_h, true)
+    
+    if ss.ui.mouse_in(minus_x, font_size_y, btn_w, btn_h) then
+        gfx.set(1, 0.5, 1)  -- magenta hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    gfx.rect(minus_x, font_size_y, btn_w, btn_h, false)
+    
+    gfx.set(0.3, 0.8, 0.8)
+    ss.set_font(16, true)
+    gfx.x, gfx.y = minus_x + 3, font_size_y - 2
+    gfx.drawstr("-")
+    
+    if ss.ui.was_clicked(minus_x, font_size_y, btn_w, btn_h) then
+        ss.ui_font_size = math.max(12, ss.ui_font_size - 2)
+        ss.save_config(ss.current_font, ss.ui_font_size)
+    end
+    
+    -- Plus button
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(plus_x, font_size_y, btn_w, btn_h, true)
+    
+    if ss.ui.mouse_in(plus_x, font_size_y, btn_w, btn_h) then
+        gfx.set(1, 0.5, 1)  -- magenta hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    gfx.rect(plus_x, font_size_y, btn_w, btn_h, false)
+    
+    gfx.set(0.3, 0.8, 0.8)
+    ss.set_font(16, true)
+    gfx.x, gfx.y = plus_x + 2, font_size_y - 4
+    gfx.drawstr("+")
+    
+    if ss.ui.was_clicked(plus_x, font_size_y, btn_w, btn_h) then
+        ss.ui_font_size = math.min(48, ss.ui_font_size + 2)
+        ss.save_config(ss.current_font, ss.ui_font_size)
+    end
+    
     -- Song list area
     local list_y = 60
     local list_h = h - 150
@@ -543,7 +604,9 @@ function ss.ui.draw()
         else
             gfx.set(0.7, 0.7, 0.7)  -- normal text
         end
-        ss.set_font(18, true)
+        -- Scale text size based on configured font size (relative to base 24)
+        local text_size = math.floor(18 * (ss.ui_font_size / 24))
+        ss.set_font(text_size, true)
         gfx.x, gfx.y = 20, y + 11
         gfx.drawstr(i .. ". " .. ss.songs[i].name)
         

@@ -33,6 +33,18 @@ if exist "%~dp0Hacked-KerX.ttf" (
     echo ✅ Installed Hacked-KerX.ttf font
 )
 
+REM Copy fonts list if it exists (pre-generated on macOS/Linux)
+if exist "%~dp0fonts_list.txt" (
+    copy "%~dp0fonts_list.txt" "%REAPER_SCRIPTS%\fonts_list.txt" >nul
+    echo ✅ Installed fonts_list.txt
+)
+
+REM Copy helper script for future font updates
+if exist "%~dp0get_fonts.sh" (
+    copy "%~dp0get_fonts.sh" "%REAPER_SCRIPTS%\get_fonts.sh" >nul
+    echo ℹ️  Copied get_fonts.sh (for macOS/Linux systems)
+)
+
 REM Copy example setlist if not present
 if not exist "%REAPER_SCRIPTS%\setlist.json" (
     copy "%~dp0example_setlist.json" "%REAPER_SCRIPTS%\setlist.json" >nul

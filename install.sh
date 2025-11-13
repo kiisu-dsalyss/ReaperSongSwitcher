@@ -39,6 +39,21 @@ if [ -f "$SCRIPT_DIR/Hacked-KerX.ttf" ]; then
     echo "✅ Installed Hacked-KerX.ttf font"
 fi
 
+# Copy helper script and generate fonts list
+if [ -f "$SCRIPT_DIR/get_fonts.sh" ]; then
+    cp "$SCRIPT_DIR/get_fonts.sh" "$REAPER_SCRIPTS/get_fonts.sh"
+    chmod +x "$REAPER_SCRIPTS/get_fonts.sh"
+    echo "✅ Installed get_fonts.sh"
+    
+    # Generate fonts_list.txt
+    if sh "$REAPER_SCRIPTS/get_fonts.sh" > "$REAPER_SCRIPTS/fonts_list.txt" 2>&1; then
+        FONT_COUNT=$(wc -l < "$REAPER_SCRIPTS/fonts_list.txt")
+        echo "✅ Generated fonts_list.txt ($FONT_COUNT fonts)"
+    else
+        echo "⚠️  Could not generate fonts_list.txt, will use fallback list"
+    fi
+fi
+
 # Copy example setlist if not present
 if [ ! -f "$REAPER_SCRIPTS/setlist.json" ]; then
     cp "$SCRIPT_DIR/example_setlist.json" "$REAPER_SCRIPTS/setlist.json"
