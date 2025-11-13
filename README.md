@@ -13,11 +13,12 @@ Lua scripts for Reaper that automatically switch between project files during li
 
 ### `switcher_transport.lua` (Main UI - Recommended)
 Full-featured transport control interface with:
+
 - **Setlist display** - Shows all songs in the queue with current/selected highlighting
 - **Transport controls** - Back (<<), Play/Stop, Skip (>>)
-- **Loop toggle** - Large button that enables/disables auto-switching
-  - 🟡 Yellow when **LOOP ON** (auto-advance enabled)
-  - 🟢 Green pulsing when **LOOP OFF** (manual control only, pulses in sync with tempo!)
+- **Loop toggle** - Large button to control intro/main section playback
+  - 🟡 Yellow when **LOOP ON** - Plays the intro loop continuously (ambient sound between songs)
+  - 🟢 Green pulsing when **LOOP OFF** - Plays the full song from intro through to end, pulses in sync with tempo!
 - **Cyberpunk styling** - Dark blue background with neon cyan/magenta/green accents
 - **File clicking** - Click any song in the list to select it, then press Play
 - **Manual navigation** - Use << and >> buttons to jump songs
@@ -114,11 +115,13 @@ After the last song loops, playback stops instead of restarting (or cycles back 
 ## Troubleshooting
 
 **Songs not switching?**
-- Make sure loop is enabled (LOOP ON button should be yellow)
+
+- Make sure loop is disabled (LOOP OFF - green button) to play full songs
 - Check that `setlist.json` has correct `base_path` and paths to .rpp files
-- Verify each song project actually loops to the beginning
+- Verify each song project has the intro loop set up properly
 
 **UI looks weird?**
+
 - Reload the script with F5 (or re-run from Scripts menu)
 - Check Reaper's dock settings - gfx window should appear as a floating panel
 
