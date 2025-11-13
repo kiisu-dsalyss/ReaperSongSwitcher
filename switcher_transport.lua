@@ -104,15 +104,15 @@ function ss.get_system_fonts()
     
     ss.log_transport("Starting font detection...")
     
-    -- Try helper script that generates font list
-    local helper_script = ss.script_dir .. "/get_fonts.sh"
-    ss.log_transport("Helper script path: " .. helper_script)
+    -- Read from pre-generated fonts list file
+    local fonts_list_file = ss.script_dir .. "/fonts_list.txt"
+    ss.log_transport("Fonts list file: " .. fonts_list_file)
     
-    local handle = io.popen("bash " .. helper_script, "r")
-    if handle then
-        ss.log_transport("Helper script opened successfully")
+    local f = io.open(fonts_list_file, "r")
+    if f then
+        ss.log_transport("Fonts file opened")
         local count = 0
-        for line in handle:lines() do
+        for line in f:lines() do
             -- Clean up the font name (trim whitespace)
             line = line:gsub("^%s+", ""):gsub("%s+$", "")
             
@@ -128,13 +128,13 @@ function ss.get_system_fonts()
                 end
             end
         end
-        handle:close()
-        ss.log_transport("Helper script closed. Total fonts found: " .. #fonts)
+        f:close()
+        ss.log_transport("Fonts file closed. Total fonts found: " .. count)
     else
-        ss.log_transport("ERROR: Could not open helper script!")
+        ss.log_transport("ERROR: Could not open fonts_list.txt!")
     end
     
-    -- Fallback list if helper script didn't work
+    -- Fallback list if file didn't work
     if #fonts == 0 then
         ss.log_transport("No fonts found, using fallback list")
         fonts = {"Arial", "Menlo", "Courier New", "Courier", "Monaco", "Helvetica", "Times New Roman", "Verdana"}
@@ -291,12 +291,12 @@ function ss.init()
     end
 end
 
--- Font picker UI
+-- Font picker UI with search
 function ss.draw_font_picker()
     local w = gfx.w
     local h = gfx.h
-    local dialog_w = 400
-    local dialog_h = 500
+    local dialog_w = 450
+    local dialog_h = 550
     local dialog_x = (w - dialog_w) / 2
     local dialog_y = (h - dialog_h) / 2
     
@@ -316,53 +316,99 @@ function ss.draw_font_picker()
     gfx.x, gfx.y = dialog_x + 20, dialog_y + 15
     gfx.drawstr("SELECT FONT (" .. #ss.available_fonts .. " available)")
     
+    -- Search box
+    ss.font_search = ss.font_search or ""
+    local search_y = dialog_y + 45
+    gfx.set(0.1, 0.2, 0.3)
+    gfx.rect(dialog_x + 10, search_y, dialog_w - 20, 28, true)
+    gfx.set(0, 1, 1)
+    gfx.rect(dialog_x + 10, search_y, dialog_w - 20, 28, false)
+    
+    gfx.set(0.7, 0.7, 0.7)
+    ss.set_font(12, false)
+    gfx.x, gfx.y = dialog_x + 20, search_y + 6
+    gfx.drawstr("Search: " .. ss.font_search .. (math.floor(reaper.time_precise() * 2) % 2 == 0 and "_" or ""))
+    
+    -- Build filtered font list
+    local filtered_fonts = {}
+    local search_lower = ss.font_search:lower()
+    for i, font_name in ipairs(ss.available_fonts) do
+        if search_lower == "" or font_name:lower():find(search_lower, 1, true) then
+            table.insert(filtered_fonts, font_name)
+        end
+    end
+    
     -- Font list with scrolling
-    local list_y = dialog_y + 50
-    local list_h = dialog_h - 110
-    local item_h = 20
+    local list_y = search_y + 40
+    local list_h = dialog_h - 160
+    local item_h = 18
     local max_visible = math.floor(list_h / item_h)
+    local scrollbar_w = 12
+    local list_w = dialog_w - 20 - scrollbar_w - 5
     
     -- Handle scroll wheel
     local scroll_delta = gfx.mouse_wheel
     if scroll_delta ~= 0 then
-        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll + scroll_delta, math.max(0, #ss.available_fonts - max_visible)))
+        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll + scroll_delta, math.max(0, #filtered_fonts - max_visible)))
         gfx.mouse_wheel = 0
     end
     
     -- Draw font list
-    for i = 1, #ss.available_fonts do
+    for i = 1, #filtered_fonts do
         local visible_idx = i - ss.font_picker_scroll
         if visible_idx < 1 or visible_idx > max_visible then
             goto continue_fonts
         end
         
-        local font_name = ss.available_fonts[i]
+        local font_name = filtered_fonts[i]
         local y = list_y + (visible_idx - 1) * item_h
         local is_current = (font_name == ss.current_font)
         
         -- Item background
         if is_current then
             gfx.set(0, 0.8, 0.8)  -- Cyan highlight for current
-        elseif ss.ui.mouse_in(dialog_x + 10, y, dialog_w - 20, item_h) then
+        elseif ss.ui.mouse_in(dialog_x + 10, y, list_w, item_h) then
             gfx.set(0.2, 0.4, 0.5)  -- Hover
         else
             gfx.set(0.1, 0.2, 0.3)  -- Normal
         end
-        gfx.rect(dialog_x + 10, y, dialog_w - 20, item_h, true)
+        gfx.rect(dialog_x + 10, y, list_w, item_h, true)
         
         -- Font name text
         gfx.set(1, 1, 1)
         ss.set_font(10, false)
-        gfx.x, gfx.y = dialog_x + 20, y + 3
-        gfx.drawstr(font_name)
+        gfx.x, gfx.y = dialog_x + 20, y + 2
+        local display_name = font_name
+        if #font_name > 50 then
+            display_name = font_name:sub(1, 47) .. "..."
+        end
+        gfx.drawstr(display_name)
         
         -- Click handler
-        if ss.ui.was_clicked(dialog_x + 10, y, dialog_w - 20, item_h) then
+        if ss.ui.was_clicked(dialog_x + 10, y, list_w, item_h) then
             ss.save_config(font_name)
             ss.show_font_picker = false
+            ss.font_search = ""  -- Clear search
         end
         
         ::continue_fonts::
+    end
+    
+    -- Draw scrollbar
+    if #filtered_fonts > max_visible then
+        local scrollbar_x = dialog_x + dialog_w - scrollbar_w - 10
+        local scrollbar_h = list_h
+        local scroll_ratio = ss.font_picker_scroll / math.max(1, #filtered_fonts - max_visible)
+        local thumb_h = math.max(20, scrollbar_h * (max_visible / #filtered_fonts))
+        local thumb_y = list_y + scroll_ratio * (scrollbar_h - thumb_h)
+        
+        -- Scrollbar track
+        gfx.set(0.05, 0.1, 0.15)
+        gfx.rect(scrollbar_x, list_y, scrollbar_w, scrollbar_h, true)
+        
+        -- Scrollbar thumb
+        gfx.set(0, 0.6, 0.6)
+        gfx.rect(scrollbar_x, thumb_y, scrollbar_w, thumb_h, true)
     end
     
     -- Close button
@@ -376,6 +422,7 @@ function ss.draw_font_picker()
     
     if ss.ui.was_clicked(dialog_x + 20, close_y, dialog_w - 40, 30) then
         ss.show_font_picker = false
+        ss.font_search = ""  -- Clear search
     end
 end
 
@@ -765,6 +812,24 @@ function ss.main()
     else
         if ss.switch_cooldown > 0 then
             ss.switch_cooldown = ss.switch_cooldown - 1
+        end
+    end
+    
+    -- Handle keyboard input for font search
+    if ss.show_font_picker then
+        local char = gfx.getchar()
+        if char > 0 then
+            if char == 8 then  -- Backspace
+                if #ss.font_search > 0 then
+                    ss.font_search = ss.font_search:sub(1, -2)
+                end
+            elseif char == 27 then  -- Escape - close picker
+                ss.show_font_picker = false
+                ss.font_search = ""
+            elseif char >= 32 and char <= 126 then  -- Printable ASCII
+                ss.font_search = ss.font_search .. string.char(char)
+            end
+            ss.font_picker_scroll = 0  -- Reset scroll on search change
         end
     end
     
