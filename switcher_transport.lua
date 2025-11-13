@@ -103,6 +103,8 @@ ss.font_logged = ss.font_logged or false  -- Debug flag for font logging
 ss.show_font_picker = ss.show_font_picker or false  -- Show font picker dialog
 ss.available_fonts = ss.available_fonts or {}  -- Will be populated by get_system_fonts()
 ss.font_picker_scroll = ss.font_picker_scroll or 0
+ss.font_picker_dragging = ss.font_picker_dragging or false
+ss.font_picker_drag_offset = ss.font_picker_drag_offset or 0
 
 -- Get all available system fonts
 function ss.get_system_fonts()
@@ -352,16 +354,18 @@ function ss.draw_font_picker()
     
     -- Font list with scrolling
     local list_y = search_y + 40
-    local list_h = dialog_h - 140  -- Leave more room at bottom for controls
+    -- Make the list container smaller so the controls + close button fit inside the dialog
+    local list_h = dialog_h - 220
     local item_h = 24  -- Bigger rows for better readability
     local max_visible = math.floor(list_h / item_h)
     local scrollbar_w = 12
     local list_w = dialog_w - 20 - scrollbar_w - 5
     
-    -- Handle scroll wheel
+    -- Handle scroll wheel (normalized steps)
     local scroll_delta = gfx.mouse_wheel
     if scroll_delta ~= 0 then
-        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll + scroll_delta, math.max(0, #filtered_fonts - max_visible)))
+        local step = 3  -- scroll N rows per wheel tick
+        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll - scroll_delta * step, math.max(0, #filtered_fonts - max_visible)))
         gfx.mouse_wheel = 0
     end
     
@@ -411,21 +415,49 @@ function ss.draw_font_picker()
         ::continue_fonts::
     end
     
-    -- Draw scrollbar
+    -- Draw scrollbar and handle interactions
     if #filtered_fonts > max_visible then
         local scrollbar_x = dialog_x + dialog_w - scrollbar_w - 10
         local scrollbar_h = list_h
-        local scroll_ratio = ss.font_picker_scroll / math.max(1, #filtered_fonts - max_visible)
+        local max_scroll = math.max(1, #filtered_fonts - max_visible)
+        local scroll_ratio = ss.font_picker_scroll / max_scroll
         local thumb_h = math.max(20, scrollbar_h * (max_visible / #filtered_fonts))
         local thumb_y = list_y + scroll_ratio * (scrollbar_h - thumb_h)
-        
+
         -- Scrollbar track
         gfx.set(0.05, 0.1, 0.15)
         gfx.rect(scrollbar_x, list_y, scrollbar_w, scrollbar_h, true)
-        
+
         -- Scrollbar thumb
         gfx.set(0, 0.6, 0.6)
         gfx.rect(scrollbar_x, thumb_y, scrollbar_w, thumb_h, true)
+
+        -- Click on track jumps
+        if ss.ui.was_clicked(scrollbar_x, list_y, scrollbar_w, scrollbar_h) then
+            local mx, my = gfx.mouse_x, gfx.mouse_y
+            -- position click relative to track
+            local rel = (my - list_y) / (scrollbar_h - thumb_h)
+            rel = math.max(0, math.min(1, rel))
+            ss.font_picker_scroll = math.floor(rel * max_scroll + 0.5)
+        end
+
+        -- Drag thumb
+        if (gfx.mouse_cap & 1) == 1 and ss.ui.mouse_in(scrollbar_x, thumb_y, scrollbar_w, thumb_h) and not ss.font_picker_dragging then
+            -- start drag
+            ss.font_picker_dragging = true
+            ss.font_picker_drag_offset = gfx.mouse_y - thumb_y
+        end
+        if ss.font_picker_dragging then
+            if (gfx.mouse_cap & 1) == 0 then
+                ss.font_picker_dragging = false
+            else
+                local my = gfx.mouse_y
+                local new_thumb_y = my - ss.font_picker_drag_offset
+                new_thumb_y = math.max(list_y, math.min(list_y + scrollbar_h - thumb_h, new_thumb_y))
+                local rel = (new_thumb_y - list_y) / (scrollbar_h - thumb_h)
+                ss.font_picker_scroll = math.floor(rel * max_scroll + 0.5)
+            end
+        end
     end
     
     -- Font size multiplier controls (below the font list)
