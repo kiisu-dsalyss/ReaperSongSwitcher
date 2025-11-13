@@ -11,10 +11,18 @@ Lua script that automatically switches between Reaper project files during playb
 
 ## Setup
 
+### Option 1: Easy Install (Recommended)
+
 **Install:**
 ```bash
 bash install.sh
 ```
+
+This installs to Reaper's Scripts folder and adds it to the Scripts menu.
+
+### Option 2: Run Anywhere
+
+Copy `switcher.lua` and `setlist.json` to any folder and run `switcher.lua` directly from Reaper's Script menu via `File > Open file` or drag-and-drop into Reaper.
 
 **Configure `setlist.json`:**
 ```json
