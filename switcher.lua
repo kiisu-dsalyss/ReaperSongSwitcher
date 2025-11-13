@@ -1,6 +1,9 @@
 -- REAPER SONG SWITCHER
 -- One script. Auto-switches songs. Clickable UI.
 
+-- Set to false to disable console output
+local ENABLE_CONSOLE_OUTPUT = false
+
 _G.SS = _G.SS or {}
 local ss = _G.SS
 
@@ -18,7 +21,9 @@ ss.auto_switch_next_idx = ss.auto_switch_next_idx or 0
 ss.loop_check_counter = ss.loop_check_counter or 0  -- Rate-limit position logging
 
 function ss.log(msg)
-    reaper.ShowConsoleMsg("[SS] " .. msg .. "\n")
+    if ENABLE_CONSOLE_OUTPUT then
+        reaper.ShowConsoleMsg("[SS] " .. msg .. "\n")
+    end
 end
 
 -- Append a timestamped message to a log file next to the script
@@ -152,22 +157,33 @@ function ss.main()
             ss.auto_switch_state = 0  -- Back to idle
     end
     
-    -- Loop detection for auto-switch
+    -- Loop detection for auto-switch (ALWAYS runs, independent of any loop toggle)
     if #ss.songs > 0 and ss.switch_cooldown <= 0 then
         local is_playing = reaper.GetPlayStateEx(0) == 1
         if is_playing then
             local pos = reaper.GetPlayPosition2Ex(0)
             
-            -- Log position every 30 frames (roughly every 0.3s at 100fps) for debugging
-            ss.loop_check_counter = ss.loop_check_counter + 1
-            if ss.loop_check_counter % 30 == 0 then
-                ss.log_file("MONITOR: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " last_pos=" .. string.format("%.2f", ss.last_pos) .. " cooldown=" .. ss.switch_cooldown)
+            -- Get the End marker position if it exists
+            local end_marker_pos = nil
+            for i = 0, reaper.CountProjectMarkers(0) - 1 do
+                local retval, isrgn, pos_marker, rgnend, name, markidx = reaper.EnumProjectMarkers(i)
+                if name == "End" and not isrgn then
+                    end_marker_pos = pos_marker
+                    break
+                end
             end
             
-            -- Detect loop: position jumped from >50s back to <5s (song restarted)
-            if ss.last_pos > 50 and pos < 5 then
-                ss.log("Loop detected at " .. math.floor(pos) .. "s (was " .. math.floor(ss.last_pos) .. "s)")
-                ss.log_file("LOOP_DETECTED: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " last_pos=" .. string.format("%.2f", ss.last_pos))
+            -- Log position every 30 frames
+            ss.loop_check_counter = ss.loop_check_counter + 1
+            if ss.loop_check_counter % 30 == 0 then
+                local end_info = end_marker_pos and string.format("%.2f", end_marker_pos) or "none"
+                ss.log_file("MONITOR: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " end_marker=" .. end_info .. " cooldown=" .. ss.switch_cooldown)
+            end
+            
+            -- Detect when playback passes the End marker
+            if end_marker_pos and ss.last_pos < end_marker_pos and pos >= end_marker_pos then
+                ss.log("End marker reached at " .. math.floor(pos) .. "s (marker at " .. math.floor(end_marker_pos) .. "s)")
+                ss.log_file("END_MARKER_REACHED: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " marker_pos=" .. string.format("%.2f", end_marker_pos))
                 
                 -- If this is the LAST song, just stop - don't auto-switch
                 if ss.current_index >= #ss.songs then
@@ -177,7 +193,7 @@ function ss.main()
                 else
                     -- Auto-switch to next song
                     ss.log("Switching to next song")
-                    ss.log_file("AUTO_SWITCH: detected loop at index " .. ss.current_index .. ", switching to next")
+                    ss.log_file("AUTO_SWITCH: End marker reached at index " .. ss.current_index .. ", switching to next")
                     reaper.OnStopButtonEx(0)
                     ss.log("Stopped playback")
                     ss.log_file("AUTO_SWITCH: stopped playback")
@@ -187,25 +203,29 @@ function ss.main()
                     ss.switch_cooldown = 10  -- Prevent rapid re-triggering
                     ss.log_file("AUTO_SWITCH: scheduled open_no_play for index " .. next_idx .. ", cooldown set to 10")
                 end
-            elseif ss.last_pos > 50 and pos >= 5 then
-                -- Position is still high, no loop yet
-                ss.log_file("NO_LOOP: pos=" .. string.format("%.2f", pos) .. " < threshold, last_pos=" .. string.format("%.2f", ss.last_pos))
             end
             ss.last_pos = pos
         else
-            ss.switch_cooldown = 0
-            ss.last_pos = 0
-            ss.log_file("NOT_PLAYING: playstate=" .. reaper.GetPlayStateEx(0))
-        end
-    else
-        if ss.switch_cooldown > 0 then
-            ss.switch_cooldown = ss.switch_cooldown - 1
-            if ss.switch_cooldown % 5 == 0 then
-                ss.log_file("COOLDOWN: remaining=" .. ss.switch_cooldown)
+            -- Playback stopped - check if we were near the end marker
+            if end_marker_pos and ss.last_pos >= end_marker_pos - 2 and ss.last_pos > 0 then
+                ss.log("Song finished (playback stopped near end marker)")
+                ss.log_file("SONG_FINISHED: index=" .. ss.current_index .. " last_pos=" .. string.format("%.2f", ss.last_pos))
+                
+                if ss.current_index >= #ss.songs then
+                    ss.log("Last song finished")
+                else
+                    -- Auto-switch to next song
+                    ss.log("Song finished, switching to next")
+                    local next_idx = ss.current_index + 1
+                    ss.open_no_play(next_idx)
+                    ss.switch_cooldown = 10
+                end
+                ss.last_pos = 0
+            elseif not is_playing then
+                ss.switch_cooldown = 0
             end
         end
-    end
-        end
+        ss.last_pos = pos
     else
         if ss.switch_cooldown > 0 then
             ss.switch_cooldown = ss.switch_cooldown - 1

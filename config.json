@@ -1,0 +1,11 @@
+{
+  "ui_font": "Menlo",
+  "available_fonts": [
+    "Arial",
+    "Menlo",
+    "Courier New",
+    "Courier",
+    "Monaco",
+    "Helvetica"
+  ]
+}

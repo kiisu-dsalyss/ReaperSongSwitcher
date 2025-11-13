@@ -23,9 +23,21 @@ echo "📁 Installing to: $REAPER_SCRIPTS"
 # Create the directory if it doesn't exist
 mkdir -p "$REAPER_SCRIPTS"
 
-# Copy the main script
+# Copy all scripts
 cp "$SCRIPT_DIR/switcher.lua" "$REAPER_SCRIPTS/switcher.lua"
 echo "✅ Installed switcher.lua"
+
+cp "$SCRIPT_DIR/switcher_transport.lua" "$REAPER_SCRIPTS/switcher_transport.lua"
+echo "✅ Installed switcher_transport.lua"
+
+cp "$SCRIPT_DIR/setlist_editor.lua" "$REAPER_SCRIPTS/setlist_editor.lua"
+echo "✅ Installed setlist_editor.lua"
+
+# Copy font if it exists
+if [ -f "$SCRIPT_DIR/Hacked-KerX.ttf" ]; then
+    cp "$SCRIPT_DIR/Hacked-KerX.ttf" "$REAPER_SCRIPTS/Hacked-KerX.ttf"
+    echo "✅ Installed Hacked-KerX.ttf font"
+fi
 
 # Copy example setlist if not present
 if [ ! -f "$REAPER_SCRIPTS/setlist.json" ]; then
@@ -41,5 +53,6 @@ echo "✅ Installation complete!"
 echo "=================================================="
 echo ""
 echo "📝 Edit setlist.json to add your songs"
-echo "🎵 Run switcher.lua from REAPER Scripts menu"
+echo "🎵 Run switcher_transport.lua from REAPER Scripts menu (recommended)"
+echo "🎵 Or run switcher.lua for headless auto-switching"
 echo ""

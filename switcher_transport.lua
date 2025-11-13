@@ -1,8 +1,60 @@
 -- REAPER SONG SWITCHER - TRANSPORT CONTROL UI
 -- Auto-switches songs with visual transport controls
 
+-- Set to false to disable console output
+local ENABLE_CONSOLE_OUTPUT = false
+
 _G.SS = _G.SS or {}
 local ss = _G.SS
+
+-- Set to a system font that Reaper can use
+-- Available: "Arial", "Menlo", "Courier New", "Courier", "Monaco"
+-- Menlo is closest to Hacked-KerX (monospace tech aesthetic)
+local PREFERRED_FONT = "Menlo"
+
+ss.config_file = ss.script_dir .. "/config.json"
+ss.current_font = PREFERRED_FONT  -- Will be loaded from config
+
+function ss.load_config()
+    local f = io.open(ss.config_file, "r")
+    if not f then
+        -- Create default config
+        ss.log_file("Creating default config.json")
+        return false
+    end
+    local content = f:read("*a")
+    f:close()
+    
+    -- Simple JSON parsing for ui_font
+    local font_match = string.match(content, '"ui_font"%s*:%s*"([^"]+)"')
+    if font_match then
+        ss.current_font = font_match
+        ss.log_file("Loaded font from config: " .. ss.current_font)
+    end
+    return true
+end
+
+function ss.save_config(font_name)
+    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
+    local f = io.open(ss.config_file, "w")
+    if f then
+        f:write(content)
+        f:close()
+        ss.current_font = font_name
+        ss.log_file("Saved font config: " .. font_name)
+    end
+end
+
+function ss.set_font(size, bold)
+    local font_flags = bold and 'b' or ''
+    -- Try the preferred font first, fall back to Arial if it doesn't work
+    gfx.setfont(1, PREFERRED_FONT, size, font_flags)
+    -- Debug: log first time only
+    if not ss.font_logged then
+        ss.log_file("set_font() called with: PREFERRED_FONT=" .. PREFERRED_FONT .. ", size=" .. size .. ", bold=" .. tostring(bold))
+        ss.font_logged = true
+    end
+end
 
 ss.script_dir = reaper.GetResourcePath() .. "/Scripts/ReaperSongSwitcher"
 ss.setlist_file = ss.script_dir .. "/setlist.json"
@@ -16,14 +68,19 @@ ss.switch_cooldown = ss.switch_cooldown or 0
 ss.auto_switch_state = ss.auto_switch_state or 0  -- 0=idle, 1=loaded_waiting_to_play
 ss.auto_switch_next_idx = ss.auto_switch_next_idx or 0
 ss.loop_check_counter = ss.loop_check_counter or 0
+ss.was_playing = ss.was_playing or false  -- Track if we were playing to detect stop
 ss.ui = ss.ui or {}
 ss.ui.selected = ss.ui.selected or 1
 ss.ui.last_mouse_cap = ss.ui.last_mouse_cap or 0
-ss.ui.loop_enabled = ss.ui.loop_enabled or true  -- Auto-loop is on by default
+ss.ui.loop_enabled = ss.ui.loop_enabled or false  -- Track loop state
+ss.ui.loop_initialized = ss.ui.loop_initialized or false  -- Track if we've synced with Reaper
 ss.ui.pulse_phase = ss.ui.pulse_phase or 0  -- For pulsing animation
+ss.font_logged = ss.font_logged or false  -- Debug flag for font logging
 
 function ss.log(msg)
-    reaper.ShowConsoleMsg("[SS] " .. msg .. "\n")
+    if ENABLE_CONSOLE_OUTPUT then
+        reaper.ShowConsoleMsg("[SS] " .. msg .. "\n")
+    end
 end
 
 function ss.log_file(msg)
@@ -89,6 +146,11 @@ function ss.load_song(idx)
         ss.ui.selected = idx
         ss.last_pos = 0
         
+        -- Sync loop state with new project
+        local loop_state = reaper.GetSetRepeat(-1)
+        ss.ui.loop_enabled = (loop_state == 1)
+        ss.log_file("load_song(): Synced loop state: " .. (ss.ui.loop_enabled and "ON" or "OFF"))
+        
         -- Set play position to 0 first
         reaper.SetEditCurPos(0, false, false)
         
@@ -118,6 +180,11 @@ function ss.load_song_no_play(idx)
         ss.ui.selected = idx
         ss.last_pos = 0
         
+        -- Sync loop state with new project
+        local loop_state = reaper.GetSetRepeat(-1)
+        ss.ui.loop_enabled = (loop_state == 1)
+        ss.log_file("load_song_no_play(): Synced loop state: " .. (ss.ui.loop_enabled and "ON" or "OFF"))
+        
         -- Set play position to 0 first
         reaper.SetEditCurPos(0, false, false)
         
@@ -135,6 +202,18 @@ function ss.init()
         if ss.load_json() then
             ss.init_done = true
             ss.log("Ready!")
+            ss.log_file("=== INIT: Font attempting to use: " .. PREFERRED_FONT .. " ===")
+            
+            -- Sync loop button with Reaper's actual transport loop state on first run only
+            if not ss.ui.loop_initialized then
+                -- Read Reaper's repeat/loop state: GetSetRepeat(-1) returns 0 if off, 1 if on
+                local loop_state = reaper.GetSetRepeat(-1)
+                ss.ui.loop_enabled = (loop_state == 1)
+                ss.ui.loop_initialized = true
+                ss.log("Loop initialized: " .. (ss.ui.loop_enabled and "ON" or "OFF"))
+                ss.log_file("Loop initialized: " .. (ss.ui.loop_enabled and "ON" or "OFF"))
+            end
+            
             ss.load_song(1)  -- Auto-load first song
         else
             reaper.defer(ss.init)
@@ -169,7 +248,7 @@ function ss.ui.draw()
     gfx.rect(0, 0, w, 50, false)
     
     gfx.set(0, 1, 1)
-    gfx.setfont(1, "Arial", 24, 'b')
+    ss.set_font(24, true)
     gfx.x, gfx.y = 15, 12
     gfx.drawstr("SETLIST")
     
@@ -211,7 +290,7 @@ function ss.ui.draw()
         else
             gfx.set(0.7, 0.7, 0.7)  -- normal text
         end
-        gfx.setfont(1, "Arial", 18, 'b')
+        ss.set_font(18, true)
         gfx.x, gfx.y = 20, y + 11
         gfx.drawstr(i .. ". " .. ss.songs[i].name)
         
@@ -226,6 +305,18 @@ function ss.ui.draw()
     local loop_btn_y = h - 280
     local loop_btn_h = 140
     
+    -- Check if user toggled loop (sync UI state with Reaper state changes)
+    if ss.ui.was_clicked(10, loop_btn_y, w - 20, loop_btn_h) then
+        -- Toggle Reaper's loop state via action 1068 (Toggle loop)
+        reaper.Main_OnCommand(1068, 0)
+        -- Update our tracking
+        ss.ui.loop_enabled = not ss.ui.loop_enabled
+        
+        ss.log_file("Loop " .. (ss.ui.loop_enabled and "ENABLED" or "DISABLED"))
+    end
+    
+    local loop_is_enabled = ss.ui.loop_enabled
+    
     -- Calculate pulse effect based on tempo
     local tempo = reaper.Master_GetTempo()
     local beat_time = 60 / tempo  -- seconds per beat
@@ -234,13 +325,13 @@ function ss.ui.draw()
     
     -- When disabled, pulse the opacity; when enabled, solid
     local brightness = 1.0
-    if not ss.ui.loop_enabled then
+    if not loop_is_enabled then
         -- Sine wave pulse from 0.5 to 1.0
         brightness = 0.5 + 0.5 * math.sin(phase * math.pi)
     end
     
     -- Set background color based on state with pulse effect
-    if ss.ui.loop_enabled then
+    if loop_is_enabled then
         gfx.set(1, 1, 0)  -- yellow when enabled
     else
         gfx.set(0 * brightness, 1 * brightness, 0 * brightness)  -- pulsing green when disabled
@@ -255,19 +346,10 @@ function ss.ui.draw()
     end
     gfx.rect(10, loop_btn_y, w - 20, loop_btn_h, false)
     
-    if ss.ui.was_clicked(10, loop_btn_y, w - 20, loop_btn_h) then
-        ss.ui.loop_enabled = not ss.ui.loop_enabled
-        
-        -- Toggle Reaper's loop state via action 1068 (Toggle loop)
-        reaper.Main_OnCommand(1068, 0)
-        
-        ss.log_file("Loop " .. (ss.ui.loop_enabled and "ENABLED" or "DISABLED"))
-    end
-    
-    -- Draw "LOOP ON" or "LOOP OFF" text centered
+    -- Draw "LOOP ON" or "LOOP OFF" text centered, based on actual Reaper state
     gfx.set(0, 0, 0)  -- black text
-    gfx.setfont(1, "Arial", 56, 'b')
-    local loop_text = ss.ui.loop_enabled and "LOOP ON" or "LOOP OFF"
+    ss.set_font(56, true)
+    local loop_text = loop_is_enabled and "LOOP ON" or "LOOP OFF"
     local text_width = gfx.measurestr(loop_text)
     gfx.x, gfx.y = (w - 20) / 2 + 10 - text_width / 2, loop_btn_y + loop_btn_h / 2 - 28
     gfx.drawstr(loop_text)
@@ -303,7 +385,7 @@ function ss.ui.draw()
     
     -- Draw << icon
     gfx.set(0, 1, 1)
-    gfx.setfont(1, "Arial", 48, 'b')
+    ss.set_font(48, true)
     gfx.x, gfx.y = back_x + 20, transport_y + 25
     gfx.drawstr("<<")
     
@@ -378,7 +460,7 @@ function ss.ui.draw()
     
     -- Draw >> icon
     gfx.set(0, 1, 1)
-    gfx.setfont(1, "Arial", 48, 'b')
+    ss.set_font(48, true)
     gfx.x, gfx.y = skip_x + 20, transport_y + 25
     gfx.drawstr(">>")
 end
@@ -397,22 +479,33 @@ function ss.main()
         ss.auto_switch_state = 0  -- Back to idle
     end
     
-    -- Loop detection for auto-switch (only if loop is enabled)
-    if ss.ui.loop_enabled and #ss.songs > 0 and ss.switch_cooldown <= 0 then
+    -- Loop detection for auto-switch (independent of loop_enabled - that's just for Reaper's intro loop)
+    if #ss.songs > 0 and ss.switch_cooldown <= 0 then
         local is_playing = reaper.GetPlayStateEx(0) == 1
-        if is_playing then
-            local pos = reaper.GetPlayPosition2Ex(0)
-            
-            -- Log position every 30 frames (roughly every 0.3s at 100fps) for debugging
-            ss.loop_check_counter = ss.loop_check_counter + 1
-            if ss.loop_check_counter % 30 == 0 then
-                ss.log_file("MONITOR: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " last_pos=" .. string.format("%.2f", ss.last_pos) .. " cooldown=" .. ss.switch_cooldown)
+        local pos = reaper.GetPlayPosition2Ex(0)
+        
+        -- Get the End marker position if it exists
+        local end_marker_pos = nil
+        for i = 0, reaper.CountProjectMarkers(0) - 1 do
+            local retval, isrgn, pos_marker, rgnend, name, markidx = reaper.EnumProjectMarkers(i)
+            if name == "End" and not isrgn then
+                end_marker_pos = pos_marker
+                break
             end
-            
-            -- Detect loop: position jumped from >50s back to <5s (song restarted)
-            if ss.last_pos > 50 and pos < 5 then
-                ss.log("Loop detected at " .. math.floor(pos) .. "s (was " .. math.floor(ss.last_pos) .. "s)")
-                ss.log_file("LOOP_DETECTED: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " last_pos=" .. string.format("%.2f", ss.last_pos))
+        end
+        
+        -- Log position every 30 frames
+        ss.loop_check_counter = ss.loop_check_counter + 1
+        if ss.loop_check_counter % 30 == 0 then
+            local end_info = end_marker_pos and string.format("%.2f", end_marker_pos) or "none"
+            ss.log_file("MONITOR: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " end_marker=" .. end_info .. " playing=" .. (is_playing and "yes" or "no") .. " cooldown=" .. ss.switch_cooldown)
+        end
+        
+        if is_playing then
+            -- Detect when playback passes the End marker
+            if end_marker_pos and ss.last_pos < end_marker_pos and pos >= end_marker_pos then
+                ss.log("End marker reached at " .. math.floor(pos) .. "s (marker at " .. math.floor(end_marker_pos) .. "s)")
+                ss.log_file("END_MARKER_REACHED: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " marker_pos=" .. string.format("%.2f", end_marker_pos))
                 
                 -- If this is the LAST song, just stop - don't auto-switch
                 if ss.current_index >= #ss.songs then
@@ -422,7 +515,7 @@ function ss.main()
                 else
                     -- Auto-switch to next song
                     ss.log("Switching to next song")
-                    ss.log_file("AUTO_SWITCH: detected loop at index " .. ss.current_index .. ", switching to next")
+                    ss.log_file("AUTO_SWITCH: End marker reached at index " .. ss.current_index .. ", switching to next")
                     reaper.OnStopButtonEx(0)
                     ss.log("Stopped playback")
                     ss.log_file("AUTO_SWITCH: stopped playback")
@@ -432,22 +525,40 @@ function ss.main()
                     ss.switch_cooldown = 10  -- Prevent rapid re-triggering
                     ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx .. ", cooldown set to 10")
                 end
-            elseif ss.last_pos > 50 and pos >= 5 then
-                -- Position is still high, no loop yet
-                ss.log_file("NO_LOOP: pos=" .. string.format("%.2f", pos) .. " < threshold, last_pos=" .. string.format("%.2f", ss.last_pos))
             end
-            ss.last_pos = pos
         else
-            ss.switch_cooldown = 0
-            ss.last_pos = 0
-            ss.log_file("NOT_PLAYING: playstate=" .. reaper.GetPlayStateEx(0))
+            -- Playback stopped - check if we were near the end marker (song finished)
+            if end_marker_pos and ss.last_pos >= end_marker_pos - 2 and ss.last_pos > 0 then
+                ss.log("Song finished (playback stopped near end marker)")
+                ss.log_file("SONG_FINISHED: index=" .. ss.current_index .. " last_pos=" .. string.format("%.2f", ss.last_pos) .. " marker_pos=" .. string.format("%.2f", end_marker_pos))
+                
+                -- If this is the LAST song, just stop
+                if ss.current_index >= #ss.songs then
+                    ss.log("Last song finished - stopping")
+                    ss.log_file("LAST_SONG: finished at index " .. ss.current_index)
+                else
+                    -- Auto-switch to next song
+                    ss.log("Song finished, switching to next")
+                    ss.log_file("AUTO_SWITCH: song finished at index " .. ss.current_index .. ", switching to next")
+                    
+                    local next_idx = ss.current_index + 1
+                    ss.load_song_no_play(next_idx)
+                    ss.switch_cooldown = 10
+                    ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx .. ", cooldown set to 10")
+                end
+                ss.last_pos = 0
+            elseif not is_playing then
+                ss.switch_cooldown = 0
+                if ss.last_pos > 0 then
+                    ss.log_file("NOT_PLAYING: playstate=" .. reaper.GetPlayStateEx(0) .. " pos=" .. string.format("%.2f", pos) .. " last_pos=" .. string.format("%.2f", ss.last_pos))
+                end
+            end
         end
+        
+        ss.last_pos = pos
     else
         if ss.switch_cooldown > 0 then
             ss.switch_cooldown = ss.switch_cooldown - 1
-            if ss.switch_cooldown % 5 == 0 then
-                ss.log_file("COOLDOWN: remaining=" .. ss.switch_cooldown)
-            end
         end
     end
     

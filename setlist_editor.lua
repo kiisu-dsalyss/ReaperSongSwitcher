@@ -1,6 +1,9 @@
 -- REAPER SETLIST EDITOR
 -- Interactive gfx-based UI for editing setlist.json
 
+-- Set to false to disable console output
+local ENABLE_CONSOLE_OUTPUT = false
+
 -- Check if gfx is available
 if not gfx then
     reaper.ShowConsoleMsg("ERROR: gfx library not available. This script requires a graphical environment.\n")
@@ -11,6 +14,18 @@ _G.SETLIST_EDITOR = _G.SETLIST_EDITOR or {}
 local ed = _G.SETLIST_EDITOR
 
 ed.script_dir = reaper.GetResourcePath() .. "/Scripts/ReaperSongSwitcher"
+
+-- Set to a system font that Reaper can use
+-- Available: "Arial", "Menlo", "Courier New", "Courier", "Monaco"
+-- Menlo is closest to Hacked-KerX (monospace tech aesthetic)
+local PREFERRED_FONT = "Menlo"
+
+function ed.set_font(size, bold)
+    local font_flags = bold and 'b' or ''
+    -- Try the preferred font first, fall back to Arial if it doesn't work
+    gfx.setfont(1, PREFERRED_FONT, size, font_flags)
+end
+
 ed.setlist_file = ed.script_dir .. "/setlist.json"
 
 ed.songs = ed.songs or {}
@@ -34,7 +49,9 @@ ed.last_click_idx = ed.last_click_idx or 0  -- last clicked song index
 ed.last_click_time = ed.last_click_time or 0  -- time of last click for double-click detection
 
 function ed.log(msg)
-    reaper.ShowConsoleMsg("[SE] " .. msg .. "\n")
+    if ENABLE_CONSOLE_OUTPUT then
+        reaper.ShowConsoleMsg("[SE] " .. msg .. "\n")
+    end
 end
 
 -- Check if a click happened (mouse went from not pressed to pressed)
@@ -270,7 +287,7 @@ function ed.draw_ui()
     
     -- Title - neon cyan
     gfx.set(0, 1, 1)  -- cyan neon
-    gfx.setfont(1, "Arial", 32, 'b')
+    ed.set_font(32, true)
     gfx.x, gfx.y = x, y
     gfx.drawstr("SETLIST EDITOR")
     
@@ -290,7 +307,7 @@ function ed.draw_ui()
         ed.save_json()
     end
     gfx.set(0, 0, 0)  -- black text
-    gfx.setfont(1, "Arial", 16, 'b')
+    ed.set_font(16, true)
     gfx.x, gfx.y = save_x + save_w/2 - 16, save_y + save_h/2 - 8
     gfx.drawstr("SAVE")
     
@@ -298,7 +315,7 @@ function ed.draw_ui()
     -- Dirty indicator - neon yellow
     if ed.dirty then
         gfx.set(1, 1, 0)  -- neon yellow
-        gfx.setfont(1, "Arial", 12, 'b')
+        ed.set_font(12, true)
         gfx.x, gfx.y = save_x - 100, save_y + 8
         gfx.drawstr("● UNSAVED")
     end
@@ -306,7 +323,7 @@ function ed.draw_ui()
     y = y + 45
     
     -- Base path editor - neon cyan labels
-    gfx.setfont(1, "Arial", 14)
+    ed.set_font(14, false)
     gfx.set(0, 1, 1)  -- cyan
     gfx.x, gfx.y = x, y
     gfx.drawstr("BASE PATH:")
@@ -315,14 +332,14 @@ function ed.draw_ui()
     gfx.set(0.1, 0.2, 0.25)  -- dark blue
     gfx.rect(x, y, w, 32, 1)
     gfx.set(1, 1, 1)
-    gfx.setfont(1, "Arial", 13)
+    ed.set_font(13, false)
     gfx.x, gfx.y = x + 5, y + 6
     gfx.drawstr(ed.base_path)
     y = y + 40
     
     -- Songs list header - neon cyan
     gfx.set(0, 1, 1)  -- cyan
-    gfx.setfont(1, "Arial", 14)
+    ed.set_font(14, false)
     gfx.x, gfx.y = x, y
     gfx.drawstr("SONGS (" .. #ed.songs .. "):")
     y = y + 28
@@ -357,12 +374,12 @@ function ed.draw_ui()
             
             -- Song info - bright white text on dark background
             gfx.set(1, 1, 1)
-            gfx.setfont(1, "Arial", 18, 'b')
+            ed.set_font(18, true)
             gfx.x, gfx.y = x + 5, song_y + 2
             gfx.drawstr(i .. ". " .. ed.songs[i].name)
             gfx.x, gfx.y = x + 5, song_y + 25
             gfx.set(0.7, 0.7, 0.7)
-            gfx.setfont(1, "Arial", 14)
+            ed.set_font(14, false)
             gfx.drawstr(ed.songs[i].path)
             
             -- Click to select
@@ -444,14 +461,14 @@ function ed.draw_ui()
         
         -- Title - neon cyan
         gfx.set(0, 1, 1)
-        gfx.setfont(1, "Arial", 18, 'b')
+        ed.set_font(18, true)
         gfx.x, gfx.y = dialog_x + 20, dialog_y + 10
         gfx.drawstr("EDIT SONG #" .. ed.edit_idx)
         
         -- Name field - neon cyan label
         local field_y = dialog_y + 50
         gfx.set(0, 1, 1)  -- cyan
-        gfx.setfont(1, "Arial", 14)
+        ed.set_font(14, false)
         gfx.x, gfx.y = dialog_x + 20, field_y
         gfx.drawstr("NAME:")
         
@@ -477,13 +494,13 @@ function ed.draw_ui()
         gfx.rect(dialog_x + 22, name_field_y + 2, dialog_w - 44, name_field_h - 4, 1)
         
         gfx.set(1, 1, 1)
-        gfx.setfont(1, "Arial", 16)
+        ed.set_font(16, false)
         gfx.x, gfx.y = dialog_x + 25, name_field_y + 8
         gfx.drawstr(ed.edit_name)
         
         -- Blinking cursor for focused field
         if ed.edit_focus == "name" then
-            gfx.setfont(1, "Arial", 16)
+            ed.set_font(16, false)
             local text_w, text_h = gfx.measurestr(ed.edit_name)
             local cursor_x = dialog_x + 25 + text_w
             gfx.set(1, 1, 1)
@@ -495,7 +512,7 @@ function ed.draw_ui()
         -- Path field - neon cyan label
         local path_y = field_y + 80
         gfx.set(0, 1, 1)  -- cyan
-        gfx.setfont(1, "Arial", 14)
+        ed.set_font(14, false)
         gfx.x, gfx.y = dialog_x + 20, path_y
         gfx.drawstr("PATH: (CLICK TO BROWSE)")
         
@@ -525,7 +542,7 @@ function ed.draw_ui()
         gfx.rect(dialog_x + 22, path_field_y + 2, path_input_w - 4, path_field_h - 4, 1)
         
         gfx.set(1, 1, 1)
-        gfx.setfont(1, "Arial", 14)
+        ed.set_font(14, false)
         gfx.x, gfx.y = dialog_x + 25, path_field_y + 8
         
         -- Show truncated path for display
@@ -534,7 +551,7 @@ function ed.draw_ui()
         
         -- Blinking cursor for focused field (show cursor at actual position)
         if ed.edit_focus == "path" then
-            gfx.setfont(1, "Arial", 14)
+            ed.set_font(14, false)
             local text_w, text_h = gfx.measurestr(ed.edit_path)
             local cursor_x = dialog_x + 25 + text_w
             -- Clamp cursor to field width
@@ -559,7 +576,7 @@ function ed.draw_ui()
             ed.pick_file()
         end
         gfx.set(0, 0, 0)  -- black text on bright button
-        gfx.setfont(1, "Arial", 12, 'b')
+        ed.set_font(12, true)
         gfx.x, gfx.y = browse_x + 4, path_field_y + 12
         gfx.drawstr("...")
         
@@ -579,7 +596,7 @@ function ed.draw_ui()
             ed.finish_edit()
         end
         gfx.set(0, 0, 0)  -- black text on bright button
-        gfx.setfont(1, "Arial", 16, 'b')
+        ed.set_font(16, true)
         gfx.x, gfx.y = ok_x + ok_w/2 - 18, ok_y + 35/2 - 8
         gfx.drawstr("SAVE")
         
@@ -595,7 +612,7 @@ function ed.draw_ui()
             ed.cancel_edit()
         end
         gfx.set(0, 0, 0)  -- black text on bright button
-        gfx.setfont(1, "Arial", 16, 'b')
+        ed.set_font(16, true)
         gfx.x, gfx.y = cancel_x + ok_w/2 - 26, ok_y + 35/2 - 8
         gfx.drawstr("CANCEL")
         
@@ -621,7 +638,7 @@ function ed.draw_ui()
         ed.add_song()
     end
     gfx.set(0, 0, 0)  -- black text
-    gfx.setfont(1, "Arial", 16, 'b')
+    ed.set_font(16, true)
     gfx.x, gfx.y = x + button_w/2 - 20, button_y + bh/2 - 8
     gfx.drawstr("+ ADD")
     
@@ -639,7 +656,7 @@ function ed.draw_ui()
         end
     end
     gfx.set(0, 0, 0)  -- black text
-    gfx.setfont(1, "Arial", 16, 'b')
+    ed.set_font(16, true)
     gfx.x, gfx.y = edit_x + button_w/2 - 18, button_y + bh/2 - 8
     gfx.drawstr("EDIT")
     

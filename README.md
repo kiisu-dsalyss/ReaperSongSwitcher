@@ -4,10 +4,7 @@ Lua scripts for Reaper that automatically switch between project files during li
 
 ## What It Does
 
-1. Loads the first song from `setlist.json`
-2. Plays it
-3. When the song loops back to the start, stops, loads the next song, waits one frame, then plays it
-4. Repeats until the last song, then stops
+Automatically switches between project files during live performances by detecting when each song reaches its **End marker**, then loading and playing the next song in the setlist. Manual transport controls (play, stop, skip) let you override or navigate as needed.
 
 ## Scripts Included
 
@@ -84,15 +81,13 @@ Open to add/edit/reorder songs in your setlist.
 
 ## How It Works
 
-The script monitors playback position. When it detects the position jumped backward (song looped), it:
-1. Stops playback
-2. Opens the next project file
-3. Waits one frame (lets Reaper settle)
-4. Starts playing
+**End Marker Detection:**
+- Looks for a marker named `"End"` in each project - this marks the exact switch point
+- When playback reaches or passes this marker, the script automatically stops and loads the next song
+- Also detects if playback stops near the End marker (within 2 seconds) to catch Reaper's auto-stop before the exact marker position
+- Waits one frame for the next project to load, then starts playing
 
-The one-frame wait prevents accidental record mode triggering.
-
-After the last song loops, playback stops instead of restarting (or cycles back to song 1 if loop is enabled).
+**Important:** Each song project MUST have an `"End"` marker. Without it, that song won't auto-switch and you'll need to manually skip.
 
 ## Features
 
@@ -109,16 +104,15 @@ After the last song loops, playback stops instead of restarting (or cycles back 
 ## Requirements
 
 - Reaper 6.20+
-- Each song project must loop back to start when it ends
-- `setlist.json` in script folder with proper `base_path`
+- `setlist.json` in script folder with correct `base_path`
+- **Each song project MUST have an `"End"` marker** to trigger auto-switching
 
 ## Troubleshooting
 
 **Songs not switching?**
-
-- Make sure loop is disabled (LOOP OFF - green button) to play full songs
-- Check that `setlist.json` has correct `base_path` and paths to .rpp files
-- Verify each song project has the intro loop set up properly
+- Verify each song has an `"End"` marker at the exact switch point
+- Check that `setlist.json` has correct `base_path` and song paths (.rpp files exist)
+- Ensure LOOP is OFF (green button) to play full songs through to the End marker
 
 **UI looks weird?**
 
