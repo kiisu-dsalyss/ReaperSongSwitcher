@@ -268,50 +268,51 @@ function ed.draw_ui()
     local x, y = 10, 10
     local w = gfx.w - 20
     
-    -- Title
-    gfx.set(1, 1, 1)
+    -- Title - neon cyan
+    gfx.set(0, 1, 1)  -- cyan neon
     gfx.setfont(1, "Arial", 32, 'b')
     gfx.x, gfx.y = x, y
-    gfx.drawstr("Setlist Editor")
+    gfx.drawstr("SETLIST EDITOR")
     
-    -- Save button in top right
+    -- Save button in top right - neon magenta
     local save_w = 100
     local save_h = 35
     local save_x = gfx.w - save_w - 10
     local save_y = y + 2
     
-    gfx.set(0.2, 0.5, 0.2)
+    gfx.set(1, 0, 1)  -- bright magenta
     gfx.rect(save_x, save_y, save_w, save_h, 1)
     if ed.mouse_in(save_x, save_y, save_w, save_h) then
-        gfx.set(0.3, 0.6, 0.3)
+        gfx.set(1, 0.5, 1)  -- lighter magenta on hover
         gfx.rect(save_x, save_y, save_w, save_h, 1)
     end
     if ed.was_clicked(save_x, save_y, save_w, save_h) then
         ed.save_json()
     end
-    gfx.set(1, 1, 1)
+    gfx.set(0, 0, 0)  -- black text
     gfx.setfont(1, "Arial", 16, 'b')
     gfx.x, gfx.y = save_x + save_w/2 - 16, save_y + save_h/2 - 8
-    gfx.drawstr("Save")
+    gfx.drawstr("SAVE")
     
     -- Dirty indicator
+    -- Dirty indicator - neon yellow
     if ed.dirty then
-        gfx.set(1, 0.8, 0)
+        gfx.set(1, 1, 0)  -- neon yellow
         gfx.setfont(1, "Arial", 12, 'b')
-        gfx.x, gfx.y = save_x - 80, save_y + 8
+        gfx.x, gfx.y = save_x - 100, save_y + 8
         gfx.drawstr("● UNSAVED")
     end
     
     y = y + 45
     
-    -- Base path editor
+    -- Base path editor - neon cyan labels
     gfx.setfont(1, "Arial", 14)
-    gfx.set(0.8, 0.8, 0.8)
+    gfx.set(0, 1, 1)  -- cyan
     gfx.x, gfx.y = x, y
-    gfx.drawstr("Base Path:")
+    gfx.drawstr("BASE PATH:")
     y = y + 22
     
-    gfx.set(0.3, 0.3, 0.3)
+    gfx.set(0.1, 0.2, 0.25)  -- dark blue
     gfx.rect(x, y, w, 32, 1)
     gfx.set(1, 1, 1)
     gfx.setfont(1, "Arial", 13)
@@ -319,11 +320,11 @@ function ed.draw_ui()
     gfx.drawstr(ed.base_path)
     y = y + 40
     
-    -- Songs list header
-    gfx.set(1, 1, 1)
+    -- Songs list header - neon cyan
+    gfx.set(0, 1, 1)  -- cyan
     gfx.setfont(1, "Arial", 14)
     gfx.x, gfx.y = x, y
-    gfx.drawstr("Songs (" .. #ed.songs .. "):")
+    gfx.drawstr("SONGS (" .. #ed.songs .. "):")
     y = y + 28
     
     -- Song list
@@ -337,24 +338,24 @@ function ed.draw_ui()
             local is_hovered = ed.mouse_in(x, song_y, w, song_h)
             local is_dragged = (i == ed.drag_idx and ed.drag_active)
             
-            -- Background with alternating stripes
+            -- Background with alternating stripes and cyberpunk colors
             if is_dragged then
-                gfx.set(0.5, 0.5, 0.2)  -- yellow when dragging
+                gfx.set(1, 1, 0)  -- neon yellow when dragging
             elseif is_selected then
-                gfx.set(0.2, 0.4, 0.2)  -- green when selected
+                gfx.set(0, 1, 1)  -- cyan when selected
             elseif is_hovered then
-                gfx.set(0.3, 0.3, 0.4)  -- blue when hovered
+                gfx.set(1, 0, 1)  -- magenta when hovered
             else
-                -- Alternating row colors: even rows slightly darker
+                -- Alternating row colors: even rows darker blue, odd rows slightly lighter
                 if i % 2 == 0 then
-                    gfx.set(0.18, 0.18, 0.18)  -- slightly darker
+                    gfx.set(0.08, 0.15, 0.2)  -- dark blue
                 else
-                    gfx.set(0.22, 0.22, 0.22)  -- slightly lighter
+                    gfx.set(0.1, 0.18, 0.25)  -- slightly lighter blue
                 end
             end
             gfx.rect(x, song_y, w, song_h, 1)
             
-            -- Song info
+            -- Song info - bright white text on dark background
             gfx.set(1, 1, 1)
             gfx.setfont(1, "Arial", 18, 'b')
             gfx.x, gfx.y = x + 5, song_y + 2
@@ -429,30 +430,30 @@ function ed.draw_ui()
         gfx.set(0, 0, 0)
         gfx.rect(0, 0, gfx.w, gfx.h, 1)  -- double draw for more opacity
         
-        -- Dialog box
+        -- Dialog box - cyberpunk dark blue with neon cyan border
         local dialog_w = 500
         local dialog_h = 280
         local dialog_x = (gfx.w - dialog_w) / 2
         local dialog_y = (gfx.h - dialog_h) / 2
         
-        gfx.set(0.2, 0.2, 0.2)
+        gfx.set(0.08, 0.12, 0.15)  -- dark blue background
         gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, 1)
         
-        gfx.set(0.5, 0.5, 0.5)
-        gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, 0)  -- border
+        gfx.set(0, 1, 1)  -- neon cyan border
+        gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, 0)
         
-        -- Title
-        gfx.set(1, 1, 1)
+        -- Title - neon cyan
+        gfx.set(0, 1, 1)
         gfx.setfont(1, "Arial", 18, 'b')
         gfx.x, gfx.y = dialog_x + 20, dialog_y + 10
-        gfx.drawstr("Edit Song #" .. ed.edit_idx)
+        gfx.drawstr("EDIT SONG #" .. ed.edit_idx)
         
-        -- Name field
+        -- Name field - neon cyan label
         local field_y = dialog_y + 50
-        gfx.set(0.8, 0.8, 0.8)
+        gfx.set(0, 1, 1)  -- cyan
         gfx.setfont(1, "Arial", 14)
         gfx.x, gfx.y = dialog_x + 20, field_y
-        gfx.drawstr("Name:")
+        gfx.drawstr("NAME:")
         
         -- Name input - clickable to focus
         local name_field_h = 40
@@ -463,11 +464,11 @@ function ed.draw_ui()
             end
         end
         
-        -- Highlight the focused field
+        -- Highlight the focused field - cyan for focused, dark for unfocused
         if ed.edit_focus == "name" then
-            gfx.set(0.4, 0.4, 0.5)  -- blue border for focused
+            gfx.set(0, 1, 1)  -- cyan border for focused
         else
-            gfx.set(0.3, 0.3, 0.3)
+            gfx.set(0.1, 0.2, 0.25)  -- dark blue for unfocused
         end
         gfx.rect(dialog_x + 20, name_field_y, dialog_w - 40, name_field_h, 1)
         
@@ -491,12 +492,12 @@ function ed.draw_ui()
             end
         end
         
-        -- Path field
+        -- Path field - neon cyan label
         local path_y = field_y + 80
-        gfx.set(0.8, 0.8, 0.8)
+        gfx.set(0, 1, 1)  -- cyan
         gfx.setfont(1, "Arial", 14)
         gfx.x, gfx.y = dialog_x + 20, path_y
-        gfx.drawstr("Path: (click to browse)")
+        gfx.drawstr("PATH: (CLICK TO BROWSE)")
         
         -- Path input - clickable to focus or open file picker
         local path_field_h = 40
@@ -511,11 +512,11 @@ function ed.draw_ui()
             end
         end
         
-        -- Highlight the focused field
+        -- Highlight the focused field - cyan for focused, dark for unfocused
         if ed.edit_focus == "path" then
-            gfx.set(0.4, 0.4, 0.5)  -- blue border for focused
+            gfx.set(0, 1, 1)  -- cyan border for focused
         else
-            gfx.set(0.3, 0.3, 0.3)
+            gfx.set(0.1, 0.2, 0.25)  -- dark blue for unfocused
         end
         gfx.rect(dialog_x + 20, path_field_y, path_input_w, path_field_h, 1)
         
@@ -609,24 +610,24 @@ function ed.draw_ui()
     local button_w = (w - 20) / 3
     local bh = 40
     
-    -- Add button
-    gfx.set(0.3, 0.5, 0.3)
+    -- Add button - neon cyan
+    gfx.set(0, 1, 1)
     gfx.rect(x, button_y, button_w, bh, 1)
     if ed.mouse_in(x, button_y, button_w, bh) then
-        gfx.set(0.4, 0.6, 0.4)
+        gfx.set(0.5, 1, 1)  -- lighter cyan on hover
         gfx.rect(x, button_y, button_w, bh, 1)
     end
     if ed.was_clicked(x, button_y, button_w, bh) then
         ed.add_song()
     end
-    gfx.set(1, 1, 1)
+    gfx.set(0, 0, 0)  -- black text
     gfx.setfont(1, "Arial", 16, 'b')
     gfx.x, gfx.y = x + button_w/2 - 20, button_y + bh/2 - 8
-    gfx.drawstr("+ Add")
+    gfx.drawstr("+ ADD")
     
-    -- Edit button
+    -- Edit button - neon magenta
     local edit_x = x + button_w + 10
-    gfx.set(0.3, 0.4, 0.5)
+    gfx.set(1, 0, 1)
     gfx.rect(edit_x, button_y, button_w, bh, 1)
     if ed.mouse_in(edit_x, button_y, button_w, bh) then
         gfx.set(0.4, 0.5, 0.6)
@@ -637,17 +638,17 @@ function ed.draw_ui()
             ed.start_edit(ed.selected_idx)
         end
     end
-    gfx.set(1, 1, 1)
+    gfx.set(0, 0, 0)  -- black text
     gfx.setfont(1, "Arial", 16, 'b')
     gfx.x, gfx.y = edit_x + button_w/2 - 18, button_y + bh/2 - 8
-    gfx.drawstr("Edit")
+    gfx.drawstr("EDIT")
     
-    -- Delete button
+    -- Delete button - neon red/orange
     local del_x = edit_x + button_w + 10
-    gfx.set(0.5, 0.3, 0.3)
+    gfx.set(1, 0.2, 0.2)  -- neon red
     gfx.rect(del_x, button_y, button_w, bh, 1)
     if ed.mouse_in(del_x, button_y, button_w, bh) then
-        gfx.set(0.6, 0.4, 0.4)
+        gfx.set(1, 0.5, 0.5)  -- lighter red on hover
         gfx.rect(del_x, button_y, button_w, bh, 1)
     end
     if ed.was_clicked(del_x, button_y, button_w, bh) then
@@ -655,9 +656,9 @@ function ed.draw_ui()
             ed.delete_song(ed.selected_idx)
         end
     end
-    gfx.set(1, 1, 1)
+    gfx.set(0, 0, 0)  -- black text
     gfx.x, gfx.y = del_x + button_w/2 - 26, button_y + bh/2 - 8
-    gfx.drawstr("Delete")
+    gfx.drawstr("DELETE")
     
     -- CRITICAL: Track mouse state for next frame's click detection
     ed.last_mouse_cap = gfx.mouse_cap
