@@ -547,18 +547,18 @@ function ed.draw_ui()
             end
         end
         
-        -- Browse button
+        -- Browse button (cyan like Add button)
         local browse_x = dialog_x + 20 + path_input_w + 10
-        gfx.set(0.3, 0.4, 0.5)
-        gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
         if ed.mouse_in(browse_x, path_field_y, browse_btn_w, path_field_h) then
-            gfx.set(0.4, 0.5, 0.6)
-            gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
+            gfx.set(0.2, 1, 1)  -- lighter cyan hover
+        else
+            gfx.set(0, 1, 1)  -- neon cyan
         end
+        gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
         if ed.was_clicked(browse_x, path_field_y, browse_btn_w, path_field_h) then
             ed.pick_file()
         end
-        gfx.set(1, 1, 1)
+        gfx.set(0, 0, 0)  -- black text on bright button
         gfx.setfont(1, "Arial", 12, 'b')
         gfx.x, gfx.y = browse_x + 4, path_field_y + 12
         gfx.drawstr("...")
@@ -568,36 +568,36 @@ function ed.draw_ui()
         local ok_y = dialog_y + dialog_h - 45
         local ok_w = (dialog_w - 60) / 2
         
-        -- Save button
-        gfx.set(0.3, 0.5, 0.3)
-        gfx.rect(ok_x, ok_y, ok_w, 35, 1)
+        -- Save button (magenta like main UI Save button)
         if ed.mouse_in(ok_x, ok_y, ok_w, 35) then
-            gfx.set(0.4, 0.6, 0.4)
-            gfx.rect(ok_x, ok_y, ok_w, 35, 1)
+            gfx.set(1, 0.2, 1)  -- lighter magenta hover
+        else
+            gfx.set(1, 0, 1)  -- neon magenta
         end
+        gfx.rect(ok_x, ok_y, ok_w, 35, 1)
         if ed.was_clicked(ok_x, ok_y, ok_w, 35) then
             ed.finish_edit()
         end
-        gfx.set(1, 1, 1)
+        gfx.set(0, 0, 0)  -- black text on bright button
         gfx.setfont(1, "Arial", 16, 'b')
         gfx.x, gfx.y = ok_x + ok_w/2 - 18, ok_y + 35/2 - 8
-        gfx.drawstr("Save")
+        gfx.drawstr("SAVE")
         
-        -- Cancel button
+        -- Cancel button (neon red like main UI Delete button)
         local cancel_x = ok_x + ok_w + 20
-        gfx.set(0.5, 0.3, 0.3)
-        gfx.rect(cancel_x, ok_y, ok_w, 35, 1)
         if ed.mouse_in(cancel_x, ok_y, ok_w, 35) then
-            gfx.set(0.6, 0.4, 0.4)
-            gfx.rect(cancel_x, ok_y, ok_w, 35, 1)
+            gfx.set(1, 0.4, 0.4)  -- lighter red hover
+        else
+            gfx.set(1, 0.2, 0.2)  -- neon red
         end
+        gfx.rect(cancel_x, ok_y, ok_w, 35, 1)
         if ed.was_clicked(cancel_x, ok_y, ok_w, 35) then
             ed.cancel_edit()
         end
-        gfx.set(1, 1, 1)
+        gfx.set(0, 0, 0)  -- black text on bright button
         gfx.setfont(1, "Arial", 16, 'b')
         gfx.x, gfx.y = cancel_x + ok_w/2 - 26, ok_y + 35/2 - 8
-        gfx.drawstr("Cancel")
+        gfx.drawstr("CANCEL")
         
         -- Return early so we don't draw the normal UI on top
         ed.last_mouse_cap = gfx.mouse_cap
