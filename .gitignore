@@ -1,5 +1,6 @@
 # Configuration files with user-specific paths and song lists
 setlist.json
+fonts_list.txt
 
 # Python
 __pycache__/
