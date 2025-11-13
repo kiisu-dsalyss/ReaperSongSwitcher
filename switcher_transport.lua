@@ -7,6 +7,18 @@ local ENABLE_CONSOLE_OUTPUT = false
 _G.SS = _G.SS or {}
 local ss = _G.SS
 
+-- Initialize script directory first
+ss.script_dir = reaper.GetResourcePath() .. "/Scripts/ReaperSongSwitcher"
+ss.transport_log = ss.script_dir .. "/switcher_transport.log"
+
+function ss.log_transport(msg)
+    local f = io.open(ss.transport_log, "a")
+    if f then
+        f:write("[" .. os.date("%Y-%m-%d %H:%M:%S") .. "] " .. msg .. "\n")
+        f:close()
+    end
+end
+
 -- Set to a system font that Reaper can use
 -- Available: "Arial", "Menlo", "Courier New", "Courier", "Monaco"
 -- Menlo is closest to Hacked-KerX (monospace tech aesthetic)
@@ -47,16 +59,16 @@ end
 
 function ss.set_font(size, bold)
     local font_flags = bold and 'b' or ''
-    -- Try the preferred font first, fall back to Arial if it doesn't work
-    gfx.setfont(1, PREFERRED_FONT, size, font_flags)
+    -- Use font from config, fall back to hardcoded PREFERRED_FONT
+    local font_to_use = ss.current_font or PREFERRED_FONT
+    gfx.setfont(1, font_to_use, size, font_flags)
     -- Debug: log first time only
     if not ss.font_logged then
-        ss.log_file("set_font() called with: PREFERRED_FONT=" .. PREFERRED_FONT .. ", size=" .. size .. ", bold=" .. tostring(bold))
+        ss.log_file("set_font() called with: font=" .. font_to_use .. ", size=" .. size .. ", bold=" .. tostring(bold))
         ss.font_logged = true
     end
 end
 
-ss.script_dir = reaper.GetResourcePath() .. "/Scripts/ReaperSongSwitcher"
 ss.setlist_file = ss.script_dir .. "/setlist.json"
 ss.songs = ss.songs or {}
 ss.base_path = ss.base_path or ""
@@ -76,6 +88,61 @@ ss.ui.loop_enabled = ss.ui.loop_enabled or false  -- Track loop state
 ss.ui.loop_initialized = ss.ui.loop_initialized or false  -- Track if we've synced with Reaper
 ss.ui.pulse_phase = ss.ui.pulse_phase or 0  -- For pulsing animation
 ss.font_logged = ss.font_logged or false  -- Debug flag for font logging
+ss.show_font_picker = ss.show_font_picker or false  -- Show font picker dialog
+ss.available_fonts = ss.available_fonts or {}  -- Will be populated by get_system_fonts()
+ss.font_picker_scroll = ss.font_picker_scroll or 0
+
+-- Get all available system fonts
+function ss.get_system_fonts()
+    if #ss.available_fonts > 0 then
+        ss.log_transport("Fonts already loaded: " .. #ss.available_fonts)
+        return  -- Already loaded
+    end
+    
+    local fonts = {}
+    local font_set = {}  -- Track unique fonts
+    
+    ss.log_transport("Starting font detection...")
+    
+    -- Try helper script that generates font list
+    local helper_script = ss.script_dir .. "/get_fonts.sh"
+    ss.log_transport("Helper script path: " .. helper_script)
+    
+    local handle = io.popen("bash " .. helper_script, "r")
+    if handle then
+        ss.log_transport("Helper script opened successfully")
+        local count = 0
+        for line in handle:lines() do
+            -- Clean up the font name (trim whitespace)
+            line = line:gsub("^%s+", ""):gsub("%s+$", "")
+            
+            -- Only filter: empty strings and absurdly long names
+            if line ~= "" and #line < 200 then
+                if not font_set[line] then
+                    table.insert(fonts, line)
+                    font_set[line] = true
+                    count = count + 1
+                    if count <= 10 then
+                        ss.log_transport("  Font " .. count .. ": " .. line)
+                    end
+                end
+            end
+        end
+        handle:close()
+        ss.log_transport("Helper script closed. Total fonts found: " .. #fonts)
+    else
+        ss.log_transport("ERROR: Could not open helper script!")
+    end
+    
+    -- Fallback list if helper script didn't work
+    if #fonts == 0 then
+        ss.log_transport("No fonts found, using fallback list")
+        fonts = {"Arial", "Menlo", "Courier New", "Courier", "Monaco", "Helvetica", "Times New Roman", "Verdana"}
+    end
+    
+    ss.available_fonts = fonts
+    ss.log_transport("Font loading complete: " .. #fonts .. " fonts available")
+end
 
 function ss.log(msg)
     if ENABLE_CONSOLE_OUTPUT then
@@ -199,10 +266,12 @@ end
 
 function ss.init()
     if not ss.init_done then
+        ss.load_config()  -- Load font preference from config
+        ss.get_system_fonts()  -- Populate available fonts list
         if ss.load_json() then
             ss.init_done = true
             ss.log("Ready!")
-            ss.log_file("=== INIT: Font attempting to use: " .. PREFERRED_FONT .. " ===")
+            ss.log_file("=== INIT: Font attempting to use: " .. ss.current_font .. " ===")
             
             -- Sync loop button with Reaper's actual transport loop state on first run only
             if not ss.ui.loop_initialized then
@@ -219,6 +288,94 @@ function ss.init()
             reaper.defer(ss.init)
             return
         end
+    end
+end
+
+-- Font picker UI
+function ss.draw_font_picker()
+    local w = gfx.w
+    local h = gfx.h
+    local dialog_w = 400
+    local dialog_h = 500
+    local dialog_x = (w - dialog_w) / 2
+    local dialog_y = (h - dialog_h) / 2
+    
+    -- Dark overlay
+    gfx.set(0, 0, 0, 0.7)
+    gfx.rect(0, 0, w, h, true)
+    
+    -- Dialog box
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, true)
+    gfx.set(0, 1, 1)
+    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, false)
+    
+    -- Title
+    gfx.set(0, 1, 1)
+    ss.set_font(16, true)
+    gfx.x, gfx.y = dialog_x + 20, dialog_y + 15
+    gfx.drawstr("SELECT FONT (" .. #ss.available_fonts .. " available)")
+    
+    -- Font list with scrolling
+    local list_y = dialog_y + 50
+    local list_h = dialog_h - 110
+    local item_h = 20
+    local max_visible = math.floor(list_h / item_h)
+    
+    -- Handle scroll wheel
+    local scroll_delta = gfx.mouse_wheel
+    if scroll_delta ~= 0 then
+        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll + scroll_delta, math.max(0, #ss.available_fonts - max_visible)))
+        gfx.mouse_wheel = 0
+    end
+    
+    -- Draw font list
+    for i = 1, #ss.available_fonts do
+        local visible_idx = i - ss.font_picker_scroll
+        if visible_idx < 1 or visible_idx > max_visible then
+            goto continue_fonts
+        end
+        
+        local font_name = ss.available_fonts[i]
+        local y = list_y + (visible_idx - 1) * item_h
+        local is_current = (font_name == ss.current_font)
+        
+        -- Item background
+        if is_current then
+            gfx.set(0, 0.8, 0.8)  -- Cyan highlight for current
+        elseif ss.ui.mouse_in(dialog_x + 10, y, dialog_w - 20, item_h) then
+            gfx.set(0.2, 0.4, 0.5)  -- Hover
+        else
+            gfx.set(0.1, 0.2, 0.3)  -- Normal
+        end
+        gfx.rect(dialog_x + 10, y, dialog_w - 20, item_h, true)
+        
+        -- Font name text
+        gfx.set(1, 1, 1)
+        ss.set_font(10, false)
+        gfx.x, gfx.y = dialog_x + 20, y + 3
+        gfx.drawstr(font_name)
+        
+        -- Click handler
+        if ss.ui.was_clicked(dialog_x + 10, y, dialog_w - 20, item_h) then
+            ss.save_config(font_name)
+            ss.show_font_picker = false
+        end
+        
+        ::continue_fonts::
+    end
+    
+    -- Close button
+    local close_y = dialog_y + dialog_h - 40
+    gfx.set(1, 0.2, 0.2)
+    gfx.rect(dialog_x + 20, close_y, dialog_w - 40, 30, true)
+    gfx.set(1, 1, 1)
+    ss.set_font(12, true)
+    gfx.x, gfx.y = dialog_x + dialog_w/2 - 20, close_y + 8
+    gfx.drawstr("CLOSE")
+    
+    if ss.ui.was_clicked(dialog_x + 20, close_y, dialog_w - 40, 30) then
+        ss.show_font_picker = false
     end
 end
 
@@ -251,6 +408,55 @@ function ss.ui.draw()
     ss.set_font(24, true)
     gfx.x, gfx.y = 15, 12
     gfx.drawstr("SETLIST")
+    
+    -- Config gear button (top right)
+    local gear_size = 24
+    local gear_btn_x = w - gear_size - 15
+    local gear_btn_y = 13
+    
+    if ss.ui.mouse_in(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
+        gfx.set(1, 0.5, 1)  -- magenta hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    
+    -- Draw proper gear icon
+    local cx = gear_btn_x + gear_size / 2
+    local cy = gear_btn_y + gear_size / 2
+    local outer_r = gear_size / 2 - 2
+    local inner_r = outer_r * 0.6
+    local tooth_depth = outer_r * 0.3
+    
+    -- Draw gear using filled polygon (teeth and body)
+    local points = {}
+    local num_teeth = 12
+    
+    for i = 0, num_teeth - 1 do
+        -- Outer tooth point
+        local angle_tooth = (i * math.pi * 2 / num_teeth)
+        table.insert(points, {cx + math.cos(angle_tooth) * outer_r, cy + math.sin(angle_tooth) * outer_r})
+        
+        -- Inner valley point
+        local angle_valley = ((i + 0.5) * math.pi * 2 / num_teeth)
+        table.insert(points, {cx + math.cos(angle_valley) * inner_r, cy + math.sin(angle_valley) * inner_r})
+    end
+    
+    -- Draw filled gear
+    gfx.mode = 2  -- antialiasing
+    for i = 1, #points do
+        if i == 1 then
+            gfx.line(points[i][1], points[i][2], points[#points][1], points[#points][2])
+        else
+            gfx.line(points[i][1], points[i][2], points[i-1][1], points[i-1][2])
+        end
+    end
+    
+    -- Draw center hole
+    gfx.circle(cx, cy, inner_r * 0.35, true)
+    
+    if ss.ui.was_clicked(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
+        ss.show_font_picker = true
+    end
     
     -- Song list area
     local list_y = 60
@@ -565,6 +771,11 @@ function ss.main()
     -- Draw UI
     ss.ui.draw()
     
+    -- Draw font picker if shown
+    if ss.show_font_picker then
+        ss.draw_font_picker()
+    end
+    
     -- Update mouse state
     ss.ui.last_mouse_cap = gfx.mouse_cap
     gfx.update()
@@ -575,5 +786,9 @@ end
 -- Initialize gfx window
 gfx.init("REAPER Song Switcher - Transport", 700, 750, 0)
 gfx.dock(-1)
+
+-- Load system fonts on startup
+ss.load_config()
+ss.get_system_fonts()
 
 ss.main()
