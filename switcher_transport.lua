@@ -26,7 +26,7 @@ local PREFERRED_FONT = "Menlo"
 
 ss.config_file = ss.script_dir .. "/config.json"
 ss.current_font = PREFERRED_FONT  -- Will be loaded from config
-ss.ui_font_size = 24  -- Will be loaded from config
+ss.font_size_multiplier = 1.0  -- Will be loaded from config (1.0 = 100%, 1.2 = 120%, etc)
 
 function ss.load_config()
     local f = io.open(ss.config_file, "r")
@@ -38,34 +38,34 @@ function ss.load_config()
     local content = f:read("*a")
     f:close()
     
-    -- Simple JSON parsing for ui_font and ui_font_size
+    -- Simple JSON parsing for ui_font and font_size_multiplier
     local font_match = string.match(content, '"ui_font"%s*:%s*"([^"]+)"')
     if font_match then
         ss.current_font = font_match
         ss.log_transport("Loaded font from config: " .. ss.current_font)
     end
     
-    local size_match = string.match(content, '"ui_font_size"%s*:%s*(%d+)')
-    if size_match then
-        ss.ui_font_size = tonumber(size_match)
-        ss.log_transport("Loaded font size from config: " .. ss.ui_font_size)
+    local mult_match = string.match(content, '"font_size_multiplier"%s*:%s*([%d.]+)')
+    if mult_match then
+        ss.font_size_multiplier = tonumber(mult_match)
+        ss.log_transport("Loaded font size multiplier from config: " .. ss.font_size_multiplier)
     else
-        ss.ui_font_size = 24  -- Default
+        ss.font_size_multiplier = 1.0  -- Default
     end
     
     return true
 end
 
-function ss.save_config(font_name, font_size)
-    font_size = font_size or ss.ui_font_size or 24
-    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "ui_font_size": ' .. font_size .. ',\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
+function ss.save_config(font_name, multiplier)
+    multiplier = multiplier or ss.font_size_multiplier or 1.0
+    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "font_size_multiplier": ' .. string.format("%.2f", multiplier) .. ',\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
     local f = io.open(ss.config_file, "w")
     if f then
         f:write(content)
         f:close()
         ss.current_font = font_name
-        ss.ui_font_size = font_size
-        ss.log_file("Saved font config: " .. font_name .. " (size: " .. font_size .. ")")
+        ss.font_size_multiplier = multiplier
+        ss.log_transport("Saved font config: " .. font_name .. " (multiplier: " .. string.format("%.2f", multiplier) .. ")")
     end
 end
 
@@ -307,8 +307,8 @@ end
 function ss.draw_font_picker()
     local w = gfx.w
     local h = gfx.h
-    local dialog_w = 450
-    local dialog_h = 550
+    local dialog_w = 480
+    local dialog_h = 680
     local dialog_x = (w - dialog_w) / 2
     local dialog_y = (h - dialog_h) / 2
     
@@ -352,8 +352,8 @@ function ss.draw_font_picker()
     
     -- Font list with scrolling
     local list_y = search_y + 40
-    local list_h = dialog_h - 160
-    local item_h = 18
+    local list_h = dialog_h - 140  -- Leave more room at bottom for controls
+    local item_h = 24  -- Bigger rows for better readability
     local max_visible = math.floor(list_h / item_h)
     local scrollbar_w = 12
     local list_w = dialog_w - 20 - scrollbar_w - 5
@@ -376,20 +376,25 @@ function ss.draw_font_picker()
         local y = list_y + (visible_idx - 1) * item_h
         local is_current = (font_name == ss.current_font)
         
-        -- Item background
+        -- Item background with alternating colors
         if is_current then
             gfx.set(0, 0.8, 0.8)  -- Cyan highlight for current
         elseif ss.ui.mouse_in(dialog_x + 10, y, list_w, item_h) then
             gfx.set(0.2, 0.4, 0.5)  -- Hover
         else
-            gfx.set(0.1, 0.2, 0.3)  -- Normal
+            -- Alternate between two shades for readability
+            if i % 2 == 0 then
+                gfx.set(0.08, 0.15, 0.2)  -- Slightly darker
+            else
+                gfx.set(0.12, 0.19, 0.26)  -- Slightly lighter
+            end
         end
         gfx.rect(dialog_x + 10, y, list_w, item_h, true)
         
         -- Font name text
         gfx.set(1, 1, 1)
-        ss.set_font(10, false)
-        gfx.x, gfx.y = dialog_x + 20, y + 2
+        ss.set_font(13, false)
+        gfx.x, gfx.y = dialog_x + 20, y + 3
         local display_name = font_name
         if #font_name > 50 then
             display_name = font_name:sub(1, 47) .. "..."
@@ -423,8 +428,64 @@ function ss.draw_font_picker()
         gfx.rect(scrollbar_x, thumb_y, scrollbar_w, thumb_h, true)
     end
     
-    -- Close button
-    local close_y = dialog_y + dialog_h - 40
+    -- Font size multiplier controls (below the font list)
+    local controls_y = list_y + list_h + 8
+    local btn_w = 50
+    local btn_h = 28
+    local minus_x = dialog_x + 20
+    local plus_x = dialog_x + dialog_w - btn_w - 20
+    local label_x = dialog_x + dialog_w / 2 - 30
+    
+    -- Minus button (decrease font size)
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(minus_x, controls_y, btn_w, btn_h, true)
+    
+    if ss.ui.mouse_in(minus_x, controls_y, btn_w, btn_h) then
+        gfx.set(1, 0.5, 1)  -- magenta hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    gfx.rect(minus_x, controls_y, btn_w, btn_h, false)
+    
+    gfx.set(0.3, 0.8, 0.8)
+    ss.set_font(16, true)
+    gfx.x, gfx.y = minus_x + 14, controls_y + 4
+    gfx.drawstr("-")
+    
+    if ss.ui.was_clicked(minus_x, controls_y, btn_w, btn_h) then
+        ss.font_size_multiplier = math.max(0.7, ss.font_size_multiplier - 0.1)
+        ss.save_config(ss.current_font, ss.font_size_multiplier)
+    end
+    
+    -- Plus button (increase font size)
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(plus_x, controls_y, btn_w, btn_h, true)
+    
+    if ss.ui.mouse_in(plus_x, controls_y, btn_w, btn_h) then
+        gfx.set(1, 0.5, 1)  -- magenta hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    gfx.rect(plus_x, controls_y, btn_w, btn_h, false)
+    
+    gfx.set(0.3, 0.8, 0.8)
+    ss.set_font(16, true)
+    gfx.x, gfx.y = plus_x + 12, controls_y + 2
+    gfx.drawstr("+")
+    
+    if ss.ui.was_clicked(plus_x, controls_y, btn_w, btn_h) then
+        ss.font_size_multiplier = math.min(1.5, ss.font_size_multiplier + 0.1)
+        ss.save_config(ss.current_font, ss.font_size_multiplier)
+    end
+    
+    -- Font size label
+    gfx.set(0.7, 0.7, 0.7)
+    ss.set_font(12, false)
+    gfx.x, gfx.y = label_x, controls_y + 7
+    gfx.drawstr(string.format("%.0f%%", ss.font_size_multiplier * 100))
+    
+    -- Close button (below the size controls)
+    local close_y = controls_y + btn_h + 10
     gfx.set(1, 0.2, 0.2)
     gfx.rect(dialog_x + 20, close_y, dialog_w - 40, 30, true)
     gfx.set(1, 1, 1)
@@ -517,55 +578,6 @@ function ss.ui.draw()
         ss.show_font_picker = true
     end
     
-    -- Font size +/- buttons
-    local font_size_y = 15
-    local btn_w = 20
-    local btn_h = 20
-    local minus_x = gear_btn_x - btn_w - 8
-    local plus_x = gear_btn_x - (btn_w * 2) - 16
-    
-    -- Minus button
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(minus_x, font_size_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(minus_x, font_size_y, btn_w, btn_h) then
-        gfx.set(1, 0.5, 1)  -- magenta hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    gfx.rect(minus_x, font_size_y, btn_w, btn_h, false)
-    
-    gfx.set(0.3, 0.8, 0.8)
-    ss.set_font(16, true)
-    gfx.x, gfx.y = minus_x + 3, font_size_y - 2
-    gfx.drawstr("-")
-    
-    if ss.ui.was_clicked(minus_x, font_size_y, btn_w, btn_h) then
-        ss.ui_font_size = math.max(12, ss.ui_font_size - 2)
-        ss.save_config(ss.current_font, ss.ui_font_size)
-    end
-    
-    -- Plus button
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(plus_x, font_size_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(plus_x, font_size_y, btn_w, btn_h) then
-        gfx.set(1, 0.5, 1)  -- magenta hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    gfx.rect(plus_x, font_size_y, btn_w, btn_h, false)
-    
-    gfx.set(0.3, 0.8, 0.8)
-    ss.set_font(16, true)
-    gfx.x, gfx.y = plus_x + 2, font_size_y - 4
-    gfx.drawstr("+")
-    
-    if ss.ui.was_clicked(plus_x, font_size_y, btn_w, btn_h) then
-        ss.ui_font_size = math.min(48, ss.ui_font_size + 2)
-        ss.save_config(ss.current_font, ss.ui_font_size)
-    end
-    
     -- Song list area
     local list_y = 60
     local list_h = h - 150
@@ -604,8 +616,8 @@ function ss.ui.draw()
         else
             gfx.set(0.7, 0.7, 0.7)  -- normal text
         end
-        -- Scale text size based on configured font size (relative to base 24)
-        local text_size = math.floor(18 * (ss.ui_font_size / 24))
+        -- Scale text size based on configured multiplier (maintains relative sizing)
+        local text_size = math.floor(18 * ss.font_size_multiplier)
         ss.set_font(text_size, true)
         gfx.x, gfx.y = 20, y + 11
         gfx.drawstr(i .. ". " .. ss.songs[i].name)

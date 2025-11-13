@@ -14,16 +14,44 @@ _G.SETLIST_EDITOR = _G.SETLIST_EDITOR or {}
 local ed = _G.SETLIST_EDITOR
 
 ed.script_dir = reaper.GetResourcePath() .. "/Scripts/ReaperSongSwitcher"
+ed.config_file = ed.script_dir .. "/config.json"
 
--- Set to a system font that Reaper can use
--- Available: "Arial", "Menlo", "Courier New", "Courier", "Monaco"
--- Menlo is closest to Hacked-KerX (monospace tech aesthetic)
+-- Default font and size multiplier (will be loaded from shared config)
 local PREFERRED_FONT = "Menlo"
+ed.current_font = PREFERRED_FONT
+ed.font_size_multiplier = 1.0
+
+-- Load config from shared config.json (same as switcher_transport uses)
+function ed.load_config()
+    local f = io.open(ed.config_file, "r")
+    if not f then
+        ed.log("Config not found, using defaults")
+        return false
+    end
+    local content = f:read("*a")
+    f:close()
+    
+    -- Simple JSON parsing for ui_font and font_size_multiplier
+    local font_match = string.match(content, '"ui_font"%s*:%s*"([^"]+)"')
+    if font_match then
+        ed.current_font = font_match
+        ed.log("Loaded font from config: " .. ed.current_font)
+    end
+    
+    local mult_match = string.match(content, '"font_size_multiplier"%s*:%s*([%d.]+)')
+    if mult_match then
+        ed.font_size_multiplier = tonumber(mult_match)
+        ed.log("Loaded font size multiplier from config: " .. ed.font_size_multiplier)
+    end
+    
+    return true
+end
 
 function ed.set_font(size, bold)
     local font_flags = bold and 'b' or ''
-    -- Try the preferred font first, fall back to Arial if it doesn't work
-    gfx.setfont(1, PREFERRED_FONT, size, font_flags)
+    -- Use shared font from config with multiplier
+    local scaled_size = math.floor(size * ed.font_size_multiplier)
+    gfx.setfont(1, ed.current_font, scaled_size, font_flags)
 end
 
 ed.setlist_file = ed.script_dir .. "/setlist.json"
@@ -684,6 +712,12 @@ function ed.draw_ui()
 end
 
 function ed.main()
+    -- Load shared config on first run
+    if not ed.config_loaded then
+        ed.load_config()
+        ed.config_loaded = true
+    end
+    
     if not ed.songs or #ed.songs == 0 then
         local loaded = ed.load_json()
         if not loaded then
