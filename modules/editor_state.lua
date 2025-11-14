@@ -25,6 +25,12 @@ function state.init_all(ed)
     -- Load dialog state
     ed.load_dialog_open = ed.load_dialog_open or false
     
+    -- JSON editor state
+    ed.json_editor_open = ed.json_editor_open or false
+    ed.json_content = ed.json_content or ""
+    ed.json_scroll_offset = ed.json_scroll_offset or 0
+    ed.json_edit_focus = ed.json_edit_focus or false
+    
     -- Drag and drop state
     ed.drag_idx = ed.drag_idx or 0
     ed.drag_active = ed.drag_active or false
