@@ -204,21 +204,28 @@ ReaperSongSwitcher/
 
 ## Running
 
+### Loading Scripts in Reaper
+
+1. Go to **Actions > Show Action List...**
+2. Click **New Action** at the bottom
+3. Use the file picker to navigate to the script file (`.lua`)
+4. After loading, the script will appear in the **Actions** menu
+
 ### Transport UI (Recommended for Live)
 
-`Scripts > ReaperSongSwitcher > switcher_transport.lua`
+Once loaded as an action, run: **Actions > ReaperSongSwitcher > switcher_transport.lua**
 
 Shows a clean transport interface with the big LOOP button and song list.
 
 ### Auto-Switch Only
 
-`Scripts > ReaperSongSwitcher > switcher.lua`
+Once loaded as an action, run: **Actions > ReaperSongSwitcher > switcher.lua**
 
 Runs silently in the background, no UI.
 
 ### Edit Setlist
 
-`Scripts > ReaperSongSwitcher > setlist_editor.lua`
+Once loaded as an action, run: **Actions > ReaperSongSwitcher > setlist_editor.lua**
 
 Open to add/edit/reorder songs in your setlist.
 
