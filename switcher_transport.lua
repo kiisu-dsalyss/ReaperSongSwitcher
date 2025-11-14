@@ -792,6 +792,9 @@ function ss.ui.draw()
     gfx.x, gfx.y = 15, 35
     gfx.drawstr(setlist_name)
     
+    -- Config gear button size (define early since it's needed for load button positioning)
+    local gear_size = 24
+    
     -- Load Setlist button (left of gear icon)
     local load_btn_w = 60
     local load_btn_h = 28
@@ -818,7 +821,6 @@ function ss.ui.draw()
     end
     
     -- Config gear button (top right)
-    local gear_size = 24
     local gear_btn_x = w - gear_size - 15
     local gear_btn_y = 13
     
