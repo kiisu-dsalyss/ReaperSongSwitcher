@@ -288,6 +288,6 @@ Open to add/edit/reorder songs in your setlist.
 
 **UI looks weird?**
 
-- Reload the script with F5 (or re-run from Scripts menu)
+- Re-run the script from the Scripts menu
 - Check Reaper's dock settings - gfx window should appear as a floating panel
 
