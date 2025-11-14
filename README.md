@@ -8,19 +8,44 @@ Automatically switches between project files during live performances by detecti
 
 ## Architecture
 
-Modular Lua design with 9 focused modules:
+Modular Lua design with clear separation of concerns:
+
+### Transport System (switcher_transport.lua)
+- 9 focused modules for auto-switching and UI
+- Handles playback control and setlist management
+- Modular transport with state, config, UI, input, and playback modules
+
+### Setlist Editor (setlist_editor.lua)
+- 7 focused modules for UI and file management
+- Simplified main script (138 lines) coordinating specialized modules
+- **editor_state.lua** - Centralized state initialization
+- **editor_io.lua** - File I/O operations (load/save/config)
+- **editor_songs.lua** - Song CRUD operations
+- **editor_ui_utils.lua** - UI graphics and helper functions
+- **editor_draw.lua** - Main UI rendering (buttons, song list, dirty indicator)
+- **editor_dialogs.lua** - Modal dialogs (edit song, create setlist, load setlist)
+- **editor_json.lua** - JSON viewer and editor modal
 
 ```
 switcher_transport.lua - Main entry point + loop/UI control
-├── modules/state.lua - State initialization
-├── modules/config.lua - Configuration persistence
-├── modules/fonts.lua - Font system integration
-├── modules/ui.lua - Dialog rendering
-├── modules/ui_components.lua - Main UI components
-├── modules/input.lua - Keyboard/mouse input handling
-├── modules/playback.lua - Song loading & auto-switch logic
-├── modules/setlist.lua - JSON parsing for setlists
-└── modules/utils.lua - Logging and helper functions
+├── modules/state.lua
+├── modules/config.lua
+├── modules/fonts.lua
+├── modules/ui.lua
+├── modules/ui_components.lua
+├── modules/input.lua
+├── modules/playback.lua
+├── modules/setlist.lua
+└── modules/utils.lua
+
+setlist_editor.lua - Setlist editor coordinator
+├── modules/editor_state.lua
+├── modules/editor_io.lua
+├── modules/editor_songs.lua
+├── modules/editor_ui_utils.lua
+├── modules/editor_draw.lua
+├── modules/editor_dialogs.lua
+└── modules/editor_json.lua
 ```
 
 ## Scripts Included
@@ -55,9 +80,13 @@ Background auto-switch script without UI:
 Full gfx-based UI editor for managing your setlist:
 
 - Add/edit/delete songs
-- Drag to reorder
+- Drag to reorder songs with mouse
+- **Load Setlist** button - Open existing .json setlist files
+- **Create Setlist** button - Create new setlist with custom path
+- **JSON Editor** button - View and edit raw JSON content (In Development)
 - File picker for easy path selection
 - Automatic backup on save (`setlist.json.bak`)
+- Modular architecture (7 focused modules for better maintainability)
 
 ## Setup
 
@@ -95,7 +124,14 @@ ReaperSongSwitcher/
     ├── input.lua
     ├── playback.lua
     ├── setlist.lua
-    └── utils.lua
+    ├── utils.lua
+    ├── editor_state.lua
+    ├── editor_io.lua
+    ├── editor_songs.lua
+    ├── editor_ui_utils.lua
+    ├── editor_draw.lua
+    ├── editor_dialogs.lua
+    └── editor_json.lua
 ```
 
 **Configure `setlist.json`:**
