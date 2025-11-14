@@ -75,6 +75,10 @@ ed.dirty = ed.dirty or false  -- true if unsaved changes
 ed.last_mouse_cap = ed.last_mouse_cap or 0  -- track previous mouse state for click detection
 ed.last_click_idx = ed.last_click_idx or 0  -- last clicked song index
 ed.last_click_time = ed.last_click_time or 0  -- time of last click for double-click detection
+ed.load_dialog_open = ed.load_dialog_open or false
+ed.create_dialog_open = ed.create_dialog_open or false
+ed.new_setlist_name = ed.new_setlist_name or ""
+ed.new_setlist_path = ed.new_setlist_path or ""
 
 function ed.log(msg)
     if ENABLE_CONSOLE_OUTPUT then
@@ -246,6 +250,65 @@ function ed.cancel_edit()
     ed.edit_idx = 0
 end
 
+function ed.open_load_dialog()
+    -- Open file browser to select a setlist.json file
+    local success, filepath = reaper.GetUserFileNameForRead(ed.script_dir, "Load Setlist", "setlist.json")
+    if success and filepath and filepath ~= "" then
+        ed.log("Selected setlist: " .. filepath)
+        ed.setlist_file = filepath
+        ed.songs = {}
+        ed.load_json()
+        ed.log("Loaded setlist from: " .. filepath)
+    else
+        ed.log("Load cancelled")
+    end
+end
+
+function ed.open_create_dialog()
+    ed.create_dialog_open = true
+    ed.new_setlist_name = ""
+    ed.new_setlist_path = ""
+    ed.log("Opened create new setlist dialog")
+end
+
+function ed.close_create_dialog()
+    ed.create_dialog_open = false
+    ed.new_setlist_name = ""
+    ed.new_setlist_path = ""
+end
+
+function ed.finish_create()
+    if ed.new_setlist_name == "" or ed.new_setlist_path == "" then
+        ed.log("ERROR: Name and path required")
+        return
+    end
+    
+    -- Create new setlist with empty songs array
+    ed.songs = {}
+    ed.base_path = ed.new_setlist_path
+    ed.dirty = false
+    
+    -- Set the new file path
+    -- Construct path: script_dir/setlists/[name].json if name doesn't look like a path
+    local new_file_path
+    if ed.new_setlist_name:match("/") or ed.new_setlist_name:match("%.json$") then
+        -- Looks like a full path
+        new_file_path = ed.new_setlist_name
+    else
+        -- Just a name, put it in script_dir with .json extension
+        if not ed.new_setlist_name:match("%.json$") then
+            new_file_path = ed.script_dir .. "/" .. ed.new_setlist_name .. ".json"
+        else
+            new_file_path = ed.script_dir .. "/" .. ed.new_setlist_name
+        end
+    end
+    
+    ed.setlist_file = new_file_path
+    ed.save_json()
+    ed.log("Created new setlist: " .. new_file_path)
+    ed.close_create_dialog()
+end
+
 function ed.swap_songs(i, j)
     if i >= 1 and i <= #ed.songs and j >= 1 and j <= #ed.songs then
         ed.songs[i], ed.songs[j] = ed.songs[j], ed.songs[i]
@@ -319,24 +382,57 @@ function ed.draw_ui()
     gfx.x, gfx.y = x, y
     gfx.drawstr("SETLIST EDITOR")
     
-    -- Save button in top right - neon magenta
-    local save_w = 100
-    local save_h = 35
-    local save_x = gfx.w - save_w - 10
-    local save_y = y + 2
+    -- Top right buttons: Load, Create, Save
+    local top_button_h = 35
+    local top_button_w = 85
+    local top_button_y = y + 2
+    local save_x = gfx.w - top_button_w - 10
+    local create_x = save_x - top_button_w - 5
+    local load_x = create_x - top_button_w - 5
     
-    gfx.set(1, 0, 1)  -- bright magenta
-    gfx.rect(save_x, save_y, save_w, save_h, 1)
-    if ed.mouse_in(save_x, save_y, save_w, save_h) then
-        gfx.set(1, 0.5, 1)  -- lighter magenta on hover
-        gfx.rect(save_x, save_y, save_w, save_h, 1)
+    -- Load button - neon green
+    gfx.set(0, 1, 0.5)
+    gfx.rect(load_x, top_button_y, top_button_w, top_button_h, 1)
+    if ed.mouse_in(load_x, top_button_y, top_button_w, top_button_h) then
+        gfx.set(0.5, 1, 0.8)  -- lighter green on hover
+        gfx.rect(load_x, top_button_y, top_button_w, top_button_h, 1)
     end
-    if ed.was_clicked(save_x, save_y, save_w, save_h) then
+    if ed.was_clicked(load_x, top_button_y, top_button_w, top_button_h) then
+        ed.open_load_dialog()
+    end
+    gfx.set(0, 0, 0)  -- black text
+    ed.set_font(14, true)
+    gfx.x, gfx.y = load_x + top_button_w/2 - 24, top_button_y + top_button_h/2 - 8
+    gfx.drawstr("LOAD")
+    
+    -- Create button - neon orange
+    gfx.set(1, 0.6, 0)
+    gfx.rect(create_x, top_button_y, top_button_w, top_button_h, 1)
+    if ed.mouse_in(create_x, top_button_y, top_button_w, top_button_h) then
+        gfx.set(1, 0.8, 0.3)  -- lighter orange on hover
+        gfx.rect(create_x, top_button_y, top_button_w, top_button_h, 1)
+    end
+    if ed.was_clicked(create_x, top_button_y, top_button_w, top_button_h) then
+        ed.open_create_dialog()
+    end
+    gfx.set(0, 0, 0)  -- black text
+    ed.set_font(14, true)
+    gfx.x, gfx.y = create_x + top_button_w/2 - 30, top_button_y + top_button_h/2 - 8
+    gfx.drawstr("CREATE")
+    
+    -- Save button - neon magenta
+    gfx.set(1, 0, 1)  -- bright magenta
+    gfx.rect(save_x, top_button_y, top_button_w, top_button_h, 1)
+    if ed.mouse_in(save_x, top_button_y, top_button_w, top_button_h) then
+        gfx.set(1, 0.5, 1)  -- lighter magenta on hover
+        gfx.rect(save_x, top_button_y, top_button_h, top_button_h, 1)
+    end
+    if ed.was_clicked(save_x, top_button_y, top_button_w, top_button_h) then
         ed.save_json()
     end
     gfx.set(0, 0, 0)  -- black text
-    ed.set_font(16, true)
-    gfx.x, gfx.y = save_x + save_w/2 - 16, save_y + save_h/2 - 8
+    ed.set_font(14, true)
+    gfx.x, gfx.y = save_x + top_button_w/2 - 16, top_button_y + top_button_h/2 - 8
     gfx.drawstr("SAVE")
     
     -- Dirty indicator
@@ -642,6 +738,155 @@ function ed.draw_ui()
         gfx.set(0, 0, 0)  -- black text on bright button
         ed.set_font(16, true)
         gfx.x, gfx.y = cancel_x + ok_w/2 - 26, ok_y + 35/2 - 8
+        gfx.drawstr("CANCEL")
+        
+        -- Return early so we don't draw the normal UI on top
+        ed.last_mouse_cap = gfx.mouse_cap
+        gfx.update()
+        return
+    end
+    
+    -- Create new setlist dialog (modal overlay)
+    if ed.create_dialog_open then
+        -- Dim background
+        gfx.set(0, 0, 0)
+        gfx.rect(0, 0, gfx.w, gfx.h, 1)
+        gfx.set(0, 0, 0)
+        gfx.rect(0, 0, gfx.w, gfx.h, 1)  -- double draw for more opacity
+        
+        -- Dialog box - cyberpunk dark blue with neon orange border
+        local dialog_w = 500
+        local dialog_h = 250
+        local dialog_x = (gfx.w - dialog_w) / 2
+        local dialog_y = (gfx.h - dialog_h) / 2
+        
+        gfx.set(0.08, 0.12, 0.15)  -- dark blue background
+        gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, 1)
+        
+        gfx.set(1, 0.6, 0)  -- neon orange border
+        gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, 0)
+        
+        -- Title - neon orange
+        gfx.set(1, 0.6, 0)
+        ed.set_font(18, true)
+        gfx.x, gfx.y = dialog_x + 20, dialog_y + 10
+        gfx.drawstr("CREATE NEW SETLIST")
+        
+        -- Name field - neon orange label
+        local field_y = dialog_y + 50
+        gfx.set(1, 0.6, 0)  -- orange
+        ed.set_font(14, false)
+        gfx.x, gfx.y = dialog_x + 20, field_y
+        gfx.drawstr("SETLIST NAME:")
+        
+        -- Name input field
+        local name_field_h = 35
+        local name_field_y = field_y + 22
+        gfx.set(0.1, 0.2, 0.25)  -- dark blue field
+        gfx.rect(dialog_x + 20, name_field_y, dialog_w - 40, name_field_h, 1)
+        
+        -- Clear text area
+        gfx.set(0.25, 0.25, 0.25)
+        gfx.rect(dialog_x + 22, name_field_y + 2, dialog_w - 44, name_field_h - 4, 1)
+        
+        gfx.set(1, 1, 1)
+        ed.set_font(14, false)
+        gfx.x, gfx.y = dialog_x + 25, name_field_y + 8
+        gfx.drawstr(ed.new_setlist_name)
+        
+        -- Base path field - neon orange label
+        local path_y = field_y + 70
+        gfx.set(1, 0.6, 0)  -- orange
+        ed.set_font(14, false)
+        gfx.x, gfx.y = dialog_x + 20, path_y
+        gfx.drawstr("BASE PATH:")
+        
+        -- Path input field (clickable to browse)
+        local path_field_h = 35
+        local path_field_y = path_y + 22
+        
+        if ed.mouse_in(dialog_x + 20, path_field_y, dialog_w - 60, path_field_h) then
+            gfx.set(1, 0.6, 0)  -- orange border on hover
+        else
+            gfx.set(0.1, 0.2, 0.25)  -- dark blue field
+        end
+        gfx.rect(dialog_x + 20, path_field_y, dialog_w - 60, path_field_h, 1)
+        
+        -- Click to browse for path
+        if ed.was_clicked(dialog_x + 20, path_field_y, dialog_w - 60, path_field_h) then
+            local success, dirpath = reaper.GetUserFileNameForRead("", "Select Base Path", "")
+            if success and dirpath and dirpath ~= "" then
+                -- Get directory from file path if file was selected
+                dirpath = dirpath:match("(.*/)")  or dirpath
+                ed.new_setlist_path = dirpath
+                ed.log("Selected base path: " .. dirpath)
+            end
+        end
+        
+        -- Clear text area
+        gfx.set(0.25, 0.25, 0.25)
+        gfx.rect(dialog_x + 22, path_field_y + 2, dialog_w - 64, path_field_h - 4, 1)
+        
+        gfx.set(0.7, 0.7, 0.7)
+        ed.set_font(12, false)
+        gfx.x, gfx.y = dialog_x + 25, path_field_y + 8
+        gfx.drawstr(ed.new_setlist_path ~= "" and ed.truncate_text(ed.new_setlist_path, dialog_w - 90) or "(click to select)")
+        
+        -- Browse button
+        local browse_btn_w = 30
+        local browse_x = dialog_x + dialog_w - browse_btn_w - 20
+        gfx.set(1, 0.6, 0)  -- orange
+        gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
+        if ed.mouse_in(browse_x, path_field_y, browse_btn_w, path_field_h) then
+            gfx.set(1, 0.8, 0.3)  -- lighter orange on hover
+            gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
+        end
+        if ed.was_clicked(browse_x, path_field_y, browse_btn_w, path_field_h) then
+            local success, dirpath = reaper.GetUserFileNameForRead("", "Select Base Path", "")
+            if success and dirpath and dirpath ~= "" then
+                dirpath = dirpath:match("(.*/)")  or dirpath
+                ed.new_setlist_path = dirpath
+            end
+        end
+        gfx.set(0, 0, 0)  -- black text
+        ed.set_font(11, true)
+        gfx.x, gfx.y = browse_x + 4, path_field_y + 9
+        gfx.drawstr("...")
+        
+        -- Buttons at bottom
+        local btn_x = dialog_x + 20
+        local btn_y = dialog_y + dialog_h - 45
+        local btn_w = (dialog_w - 60) / 2
+        
+        -- Create button (orange)
+        if ed.mouse_in(btn_x, btn_y, btn_w, 35) then
+            gfx.set(1, 0.8, 0.3)  -- lighter orange hover
+        else
+            gfx.set(1, 0.6, 0)  -- neon orange
+        end
+        gfx.rect(btn_x, btn_y, btn_w, 35, 1)
+        if ed.was_clicked(btn_x, btn_y, btn_w, 35) then
+            ed.finish_create()
+        end
+        gfx.set(0, 0, 0)  -- black text
+        ed.set_font(16, true)
+        gfx.x, gfx.y = btn_x + btn_w/2 - 28, btn_y + 35/2 - 8
+        gfx.drawstr("CREATE")
+        
+        -- Cancel button (neon red)
+        local cancel_x = btn_x + btn_w + 20
+        if ed.mouse_in(cancel_x, btn_y, btn_w, 35) then
+            gfx.set(1, 0.4, 0.4)  -- lighter red hover
+        else
+            gfx.set(1, 0.2, 0.2)  -- neon red
+        end
+        gfx.rect(cancel_x, btn_y, btn_w, 35, 1)
+        if ed.was_clicked(cancel_x, btn_y, btn_w, 35) then
+            ed.close_create_dialog()
+        end
+        gfx.set(0, 0, 0)  -- black text
+        ed.set_font(16, true)
+        gfx.x, gfx.y = cancel_x + btn_w/2 - 26, btn_y + 35/2 - 8
         gfx.drawstr("CANCEL")
         
         -- Return early so we don't draw the normal UI on top
