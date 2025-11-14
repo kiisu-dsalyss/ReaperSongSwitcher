@@ -131,6 +131,7 @@ function ss.set_font(size, bold)
 end
 
 ss.setlist_file = ss.script_dir .. "/setlist.json"
+ss.current_setlist_path = ss.current_setlist_path or ss.setlist_file  -- Currently loaded setlist
 ss.songs = ss.songs or {}
 ss.base_path = ss.base_path or ""
 ss.current_index = ss.current_index or 1
@@ -142,6 +143,7 @@ ss.auto_switch_state = ss.auto_switch_state or 0  -- 0=idle, 1=loaded_waiting_to
 ss.auto_switch_next_idx = ss.auto_switch_next_idx or 0
 ss.loop_check_counter = ss.loop_check_counter or 0
 ss.was_playing = ss.was_playing or false  -- Track if we were playing to detect stop
+ss.show_load_setlist_dialog = ss.show_load_setlist_dialog or false  -- Show load setlist dialog
 ss.ui = ss.ui or {}
 ss.ui.selected = ss.ui.selected or 1
 ss.ui.last_mouse_cap = ss.ui.last_mouse_cap or 0
@@ -231,36 +233,51 @@ function ss.log_file(msg)
     f:close()
 end
 
-function ss.load_json()
-    local f = io.open(ss.setlist_file, "r")
+function ss.load_json_from_path(filepath)
+    -- Generic function to load a setlist from any JSON file
+    local f = io.open(filepath, "r")
     if not f then
-        ss.log("ERROR: No setlist.json")
-        ss.log_file("ERROR: No setlist.json at " .. ss.setlist_file)
+        ss.log("ERROR: Could not open file: " .. filepath)
+        ss.log_file("ERROR: Could not open file: " .. filepath)
         return false
     end
     local content = f:read("*a")
     f:close()
     
-    ss.base_path = string.match(content, '"base_path"%s*:%s*"([^"]+)"')
-    if not ss.base_path then
-        ss.log("ERROR: No base_path in JSON")
-        ss.log_file("ERROR: No base_path in JSON in " .. ss.setlist_file)
+    local base_path = string.match(content, '"base_path"%s*:%s*"([^"]+)"')
+    if not base_path then
+        ss.log("ERROR: No base_path in JSON at " .. filepath)
+        ss.log_file("ERROR: No base_path in JSON at " .. filepath)
         return false
     end
     
-    ss.songs = {}
+    local songs = {}
     for name, path in string.gmatch(content, '"name"%s*:%s*"([^"]+)".-"path"%s*:%s*"([^"]+)"') do
-        table.insert(ss.songs, {name = name, path = path})
+        table.insert(songs, {name = name, path = path})
     end
     
-    if #ss.songs == 0 then
-        ss.log("ERROR: No songs in JSON")
-        ss.log_file("ERROR: No songs parsed from " .. ss.setlist_file)
+    if #songs == 0 then
+        ss.log("ERROR: No songs in JSON at " .. filepath)
+        ss.log_file("ERROR: No songs parsed from " .. filepath)
         return false
     end
-    ss.log("✓ Loaded " .. #ss.songs .. " songs")
-    ss.log_file("Loaded " .. #ss.songs .. " songs from " .. ss.setlist_file)
+    
+    -- Success - update global state
+    ss.current_setlist_path = filepath
+    ss.base_path = base_path
+    ss.songs = songs
+    ss.current_index = 1
+    ss.ui.selected = 1
+    
+    ss.log("✓ Loaded " .. #songs .. " songs from " .. filepath)
+    ss.log_file("Loaded " .. #songs .. " songs from " .. filepath)
+    
     return true
+end
+
+function ss.load_json()
+    -- Load the default setlist.json (or currently selected setlist)
+    return ss.load_json_from_path(ss.current_setlist_path or ss.setlist_file)
 end
 
 function ss.load_song(idx)
@@ -598,6 +615,146 @@ function ss.draw_font_picker()
     end
 end
 
+-- Load setlist dialog
+function ss.draw_load_setlist_dialog()
+    local w = gfx.w
+    local h = gfx.h
+    local dialog_w = 500
+    local dialog_h = 400
+    local dialog_x = (w - dialog_w) / 2
+    local dialog_y = (h - dialog_h) / 2
+    
+    -- Clamp dialog to window
+    dialog_w = math.min(dialog_w, math.max(200, w - 40))
+    dialog_h = math.min(dialog_h, math.max(150, h - 40))
+    
+    -- Dark overlay
+    gfx.set(0, 0, 0, 0.7)
+    gfx.rect(0, 0, w, h, true)
+    
+    -- Dialog box
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, true)
+    gfx.set(0, 1, 1)
+    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, false)
+    
+    -- Title
+    gfx.set(0, 1, 1)
+    ss.set_font(16, true)
+    gfx.x, gfx.y = dialog_x + 20, dialog_y + 15
+    gfx.drawstr("LOAD SETLIST")
+    
+    -- Instructions
+    gfx.set(0.7, 0.7, 0.7)
+    ss.set_font(12, false)
+    gfx.x, gfx.y = dialog_x + 20, dialog_y + 45
+    gfx.drawstr("Enter setlist filename (in Scripts folder):")
+    
+    -- Input box
+    ss.setlist_load_input = ss.setlist_load_input or ""
+    gfx.set(0.1, 0.2, 0.3)
+    gfx.rect(dialog_x + 20, dialog_y + 75, dialog_w - 40, 30, true)
+    gfx.set(0, 1, 1)
+    gfx.rect(dialog_x + 20, dialog_y + 75, dialog_w - 40, 30, false)
+    
+    gfx.set(0.7, 0.7, 0.7)
+    ss.set_font(12, false)
+    gfx.x, gfx.y = dialog_x + 30, dialog_y + 82
+    gfx.drawstr(ss.setlist_load_input .. (math.floor(reaper.time_precise() * 2) % 2 == 0 and "_" or ""))
+    
+    -- Info text
+    gfx.set(0.5, 0.7, 0.8)
+    ss.set_font(10, false)
+    gfx.x, gfx.y = dialog_x + 20, dialog_y + 115
+    gfx.drawstr("(e.g., 'setlist.json' or 'my_songs.json')")
+    
+    gfx.x, gfx.y = dialog_x + 20, dialog_y + 130
+    gfx.drawstr("Files should be in the Scripts/ReaperSongSwitcher folder")
+    
+    -- Cancel button
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, true)
+    
+    if ss.ui.mouse_in(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
+        gfx.set(1, 0.5, 1)  -- magenta hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    gfx.rect(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, false)
+    
+    gfx.set(0.3, 0.8, 0.8)
+    ss.set_font(12, true)
+    gfx.x, gfx.y = dialog_x + 40, dialog_y + dialog_h - 40
+    gfx.drawstr("CANCEL")
+    
+    if ss.ui.was_clicked(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
+        ss.show_load_setlist_dialog = false
+        ss.setlist_load_input = ""
+    end
+    
+    -- Load button
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, true)
+    
+    if ss.ui.mouse_in(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
+        gfx.set(0, 1, 0.4)  -- green hover
+    else
+        gfx.set(0, 1, 0)  -- green
+    end
+    gfx.rect(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, false)
+    
+    gfx.set(0, 1, 0)
+    ss.set_font(12, true)
+    gfx.x, gfx.y = dialog_x + (dialog_w - 40) / 2 + 30, dialog_y + dialog_h - 40
+    gfx.drawstr("LOAD")
+    
+    if ss.ui.was_clicked(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
+        if ss.setlist_load_input ~= "" then
+            -- Build full path
+            local filepath = ss.script_dir .. "/" .. ss.setlist_load_input
+            -- Add .json extension if not present
+            if not filepath:match("%.json$") then
+                filepath = filepath .. ".json"
+            end
+            
+            if ss.load_json_from_path(filepath) then
+                ss.show_load_setlist_dialog = false
+                ss.setlist_load_input = ""
+                ss.log_file("Loaded setlist from user selection: " .. filepath)
+            else
+                ss.log("Failed to load setlist: " .. filepath)
+                ss.log_file("Failed to load setlist: " .. filepath)
+            end
+        end
+    end
+    
+    -- Handle keyboard input
+    local char = gfx.getchar()
+    if char > 0 then
+        if char == 8 then  -- Backspace
+            if #ss.setlist_load_input > 0 then
+                ss.setlist_load_input = ss.setlist_load_input:sub(1, -2)
+            end
+        elseif char == 13 then  -- Enter - trigger load
+            if ss.setlist_load_input ~= "" then
+                local filepath = ss.script_dir .. "/" .. ss.setlist_load_input
+                if not filepath:match("%.json$") then
+                    filepath = filepath .. ".json"
+                end
+                if ss.load_json_from_path(filepath) then
+                    ss.show_load_setlist_dialog = false
+                    ss.setlist_load_input = ""
+                end
+            end
+        elseif char == 27 then  -- Escape - close
+            ss.show_load_setlist_dialog = false
+            ss.setlist_load_input = ""
+        elseif char >= 32 and char <= 126 then  -- Printable ASCII
+            ss.setlist_load_input = ss.setlist_load_input .. string.char(char)
+        end
+    end
+end
+
 -- UI Helper functions
 function ss.ui.mouse_in(x, y, w, h)
     return gfx.mouse_x >= x and gfx.mouse_x < x + w and
@@ -627,6 +784,38 @@ function ss.ui.draw()
     ss.set_font(24, true)
     gfx.x, gfx.y = 15, 12
     gfx.drawstr("SETLIST")
+    
+    -- Display current setlist filename
+    local setlist_name = ss.current_setlist_path:match("([^/]+)$") or "setlist.json"
+    gfx.set(0.5, 0.8, 0.9)
+    ss.set_font(11, false)
+    gfx.x, gfx.y = 15, 35
+    gfx.drawstr(setlist_name)
+    
+    -- Load Setlist button (left of gear icon)
+    local load_btn_w = 60
+    local load_btn_h = 28
+    local load_btn_x = w - gear_size - 15 - load_btn_w - 15
+    local load_btn_y = 11
+    
+    gfx.set(0.08, 0.15, 0.2)
+    gfx.rect(load_btn_x, load_btn_y, load_btn_w, load_btn_h, true)
+    
+    if ss.ui.mouse_in(load_btn_x, load_btn_y, load_btn_w, load_btn_h) then
+        gfx.set(0, 1, 1)  -- cyan hover
+    else
+        gfx.set(0.3, 0.8, 0.8)  -- cyan
+    end
+    gfx.rect(load_btn_x, load_btn_y, load_btn_w, load_btn_h, false)
+    
+    gfx.set(0.3, 0.8, 0.8)
+    ss.set_font(12, true)
+    gfx.x, gfx.y = load_btn_x + 8, load_btn_y + 7
+    gfx.drawstr("LOAD")
+    
+    if ss.ui.was_clicked(load_btn_x, load_btn_y, load_btn_w, load_btn_h) then
+        ss.show_load_setlist_dialog = true
+    end
     
     -- Config gear button (top right)
     local gear_size = 24
@@ -990,8 +1179,8 @@ function ss.main()
         end
     end
     
-    -- Handle keyboard input for font search
-    if ss.show_font_picker then
+    -- Handle keyboard input for font search (only if font picker is open, not load dialog)
+    if ss.show_font_picker and not ss.show_load_setlist_dialog then
         local char = gfx.getchar()
         if char > 0 then
             if char == 8 then  -- Backspace
@@ -1014,6 +1203,11 @@ function ss.main()
     -- Draw font picker if shown
     if ss.show_font_picker then
         ss.draw_font_picker()
+    end
+    
+    -- Draw load setlist dialog if shown
+    if ss.show_load_setlist_dialog then
+        ss.draw_load_setlist_dialog()
     end
     
     -- Periodically save window position (every 30 frames)
