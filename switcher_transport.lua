@@ -23,6 +23,7 @@ local utils = dofile(ss.script_dir .. "/modules/utils.lua")
 local ui_module = dofile(ss.script_dir .. "/modules/ui.lua")
 local playback_module = dofile(ss.script_dir .. "/modules/playback.lua")
 local ui_comp = dofile(ss.script_dir .. "/modules/ui_components.lua")
+local input = dofile(ss.script_dir .. "/modules/input.lua")
 
 function ss.log_transport(msg)
     utils.log_transport(ss.script_dir, msg)
@@ -100,20 +101,15 @@ ss.songs = ss.songs or {}
 ss.base_path = ss.base_path or ""
 ss.current_index = ss.current_index or 1
 ss.last_pos = ss.last_pos or 0
-ss.switched = ss.switched or false
 ss.init_done = ss.init_done or false
 ss.switch_cooldown = ss.switch_cooldown or 0
 ss.auto_switch_state = ss.auto_switch_state or 0  -- 0=idle, 1=loaded_waiting_to_play
 ss.auto_switch_next_idx = ss.auto_switch_next_idx or 0
 ss.loop_check_counter = ss.loop_check_counter or 0
-ss.was_playing = ss.was_playing or false  -- Track if we were playing to detect stop
 ss.show_load_setlist_dialog = ss.show_load_setlist_dialog or false  -- Show load setlist dialog
 ss.ui = ss.ui or {}
 ss.ui.selected = ss.ui.selected or 1
 ss.ui.last_mouse_cap = ss.ui.last_mouse_cap or 0
-ss.ui.loop_enabled = ss.ui.loop_enabled or false  -- Track loop state
-ss.ui.loop_initialized = ss.ui.loop_initialized or false  -- Track if we've synced with Reaper
-ss.ui.pulse_phase = ss.ui.pulse_phase or 0  -- For pulsing animation
 ss.font_logged = ss.font_logged or false  -- Debug flag for font logging
 ss.show_font_picker = ss.show_font_picker or false  -- Show font picker dialog
 ss.font_search = ss.font_search or ""  -- Font search string
@@ -131,12 +127,6 @@ function ss.get_system_fonts()
         return
     end
     ss.available_fonts = fonts_module.load_system_fonts(ss.script_dir, ss.log_transport)
-end
-
-function ss.log(msg)
-    if ENABLE_CONSOLE_OUTPUT then
-        reaper.ShowConsoleMsg("[SS] " .. msg .. "\n")
-    end
 end
 
 function ss.log_file(msg)
@@ -195,14 +185,12 @@ function ss.init()
     end
 end
 
--- Font picker UI with search
-
--- Font picker UI with search
+-- Font picker UI wrapper
 function ss.draw_font_picker()
     ui_module.draw_font_picker(ss, fonts_module, utils)
 end
 
--- Load setlist dialog
+-- Load setlist dialog wrapper
 function ss.draw_load_setlist_dialog()
     ui_module.draw_load_setlist_dialog(ss, setlist_module, utils)
 end
@@ -228,117 +216,20 @@ end
 function ss.main()
     ss.init()
     
-    -- Auto-switch state machine
+    -- Auto-switch state machine for deferred playback
     -- State 0: idle
     -- State 1: loaded, waiting to play (give Reaper one frame to settle)
     if ss.auto_switch_state == 1 then
-        -- Project is loaded, now play it
-        ss.log("   Playing (after wait)")
-        ss.log_file("auto_switch: playing after wait for index " .. ss.current_index)
         reaper.Main_OnCommand(1007, 0)
         ss.auto_switch_state = 0  -- Back to idle
+        ss.log_file("auto_switch: playing after wait for index " .. ss.current_index)
     end
     
-    -- Loop detection for auto-switch (independent of loop_enabled - that's just for Reaper's intro loop)
-    if #ss.songs > 0 and ss.switch_cooldown <= 0 then
-        local is_playing = reaper.GetPlayStateEx(0) == 1
-        local pos = reaper.GetPlayPosition2Ex(0)
-        
-        -- Get the End marker position if it exists
-        local end_marker_pos = nil
-        for i = 0, reaper.CountProjectMarkers(0) - 1 do
-            local retval, isrgn, pos_marker, rgnend, name, markidx = reaper.EnumProjectMarkers(i)
-            if name == "End" and not isrgn then
-                end_marker_pos = pos_marker
-                break
-            end
-        end
-        
-        -- Log position every 30 frames
-        ss.loop_check_counter = ss.loop_check_counter + 1
-        if ss.loop_check_counter % 30 == 0 then
-            local end_info = end_marker_pos and string.format("%.2f", end_marker_pos) or "none"
-            ss.log_file("MONITOR: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " end_marker=" .. end_info .. " playing=" .. (is_playing and "yes" or "no") .. " cooldown=" .. ss.switch_cooldown)
-        end
-        
-        if is_playing then
-            -- Detect when playback passes the End marker
-            if end_marker_pos and ss.last_pos < end_marker_pos and pos >= end_marker_pos then
-                ss.log("End marker reached at " .. math.floor(pos) .. "s (marker at " .. math.floor(end_marker_pos) .. "s)")
-                ss.log_file("END_MARKER_REACHED: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " marker_pos=" .. string.format("%.2f", end_marker_pos))
-                
-                -- If this is the LAST song, just stop - don't auto-switch
-                if ss.current_index >= #ss.songs then
-                    ss.log("Last song finished - stopping playback")
-                    ss.log_file("LAST_SONG: stopping playback at index " .. ss.current_index)
-                    reaper.OnStopButtonEx(0)
-                else
-                    -- Auto-switch to next song
-                    ss.log("Switching to next song")
-                    ss.log_file("AUTO_SWITCH: End marker reached at index " .. ss.current_index .. ", switching to next")
-                    reaper.OnStopButtonEx(0)
-                    ss.log("Stopped playback")
-                    ss.log_file("AUTO_SWITCH: stopped playback")
-                    
-                    local next_idx = ss.current_index + 1
-                    ss.load_song_no_play(next_idx)
-                    ss.switch_cooldown = 10  -- Prevent rapid re-triggering
-                    ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx .. ", cooldown set to 10")
-                end
-            end
-        else
-            -- Playback stopped - check if we were near the end marker (song finished)
-            if end_marker_pos and ss.last_pos >= end_marker_pos - 2 and ss.last_pos > 0 then
-                ss.log("Song finished (playback stopped near end marker)")
-                ss.log_file("SONG_FINISHED: index=" .. ss.current_index .. " last_pos=" .. string.format("%.2f", ss.last_pos) .. " marker_pos=" .. string.format("%.2f", end_marker_pos))
-                
-                -- If this is the LAST song, just stop
-                if ss.current_index >= #ss.songs then
-                    ss.log("Last song finished - stopping")
-                    ss.log_file("LAST_SONG: finished at index " .. ss.current_index)
-                else
-                    -- Auto-switch to next song
-                    ss.log("Song finished, switching to next")
-                    ss.log_file("AUTO_SWITCH: song finished at index " .. ss.current_index .. ", switching to next")
-                    
-                    local next_idx = ss.current_index + 1
-                    ss.load_song_no_play(next_idx)
-                    ss.switch_cooldown = 10
-                    ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx .. ", cooldown set to 10")
-                end
-                ss.last_pos = 0
-            elseif not is_playing then
-                ss.switch_cooldown = 0
-                if ss.last_pos > 0 then
-                    ss.log_file("NOT_PLAYING: playstate=" .. reaper.GetPlayStateEx(0) .. " pos=" .. string.format("%.2f", pos) .. " last_pos=" .. string.format("%.2f", ss.last_pos))
-                end
-            end
-        end
-        
-        ss.last_pos = pos
-    else
-        if ss.switch_cooldown > 0 then
-            ss.switch_cooldown = ss.switch_cooldown - 1
-        end
-    end
+    -- Handle auto-switching with End marker detection
+    playback_module.handle_auto_switch_v2(ss)
     
-    -- Handle keyboard input for font search (only if font picker is open, not load dialog)
-    if ss.show_font_picker and not ss.show_load_setlist_dialog then
-        local char = gfx.getchar()
-        if char > 0 then
-            if char == 8 then  -- Backspace
-                if #ss.font_search > 0 then
-                    ss.font_search = ss.font_search:sub(1, -2)
-                end
-            elseif char == 27 then  -- Escape - close picker
-                ss.show_font_picker = false
-                ss.font_search = ""
-            elseif char >= 32 and char <= 126 then  -- Printable ASCII
-                ss.font_search = ss.font_search .. string.char(char)
-            end
-            ss.font_picker_scroll = 0  -- Reset scroll on search change
-        end
-    end
+    -- Handle keyboard input for dialogs
+    input.handle_font_search(ss, ss.show_font_picker, ss.show_load_setlist_dialog)
     
     -- Draw UI
     ss.ui.draw()
@@ -361,7 +252,7 @@ function ss.main()
     end
     
     -- Update mouse state
-    ss.ui.last_mouse_cap = gfx.mouse_cap
+    input.update_mouse_state(ss)
     gfx.update()
     
     reaper.defer(ss.main)

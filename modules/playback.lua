@@ -60,56 +60,79 @@ function playback.load_song_no_play(idx, ss)
     end
 end
 
--- Handle auto-switching logic when near end of project
-function playback.handle_auto_switch(ss)
-    local pos = reaper.GetPlayPosition()
-    local is_playing = reaper.GetPlayStateEx(0) == 1
-    
-    if ss.init_done and #ss.songs > 0 then
-        if is_playing then
-            if pos >= ss.last_pos then
-                ss.last_pos = pos
-            else
-                local proj_length = reaper.GetProjectLength(0)
-                
-                if ss.switched then
-                    if ss.auto_switch_state == 1 then
-                        reaper.Main_OnCommand(1007, 0)
-                        ss.auto_switch_state = 0
-                        ss.log("Auto-switched and played")
-                        ss.log_file("Auto-switched and played index " .. ss.current_index)
-                    end
-                    ss.switched = false
-                end
-            end
-            
-            if ss.switch_cooldown > 0 then
-                ss.switch_cooldown = ss.switch_cooldown - 1
-            else
-                local proj_length = reaper.GetProjectLength(0)
-                if pos > proj_length - 3 and not ss.switched and ss.current_index < #ss.songs then
-                    ss.log("Song near end, auto-switching...")
-                    ss.log_file("Song near end at " .. string.format("%.2f", pos) .. ", length=" .. string.format("%.2f", proj_length))
-                    
-                    ss.switched = true
-                    local next_idx = ss.current_index + 1
-                    playback.load_song_no_play(next_idx, ss)
-                    ss.switch_cooldown = 10
-                    ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx .. ", cooldown set to 10")
-                end
-            end
-        else
-            if ss.switch_cooldown > 0 then
-                ss.switch_cooldown = ss.switch_cooldown - 1
-            end
-        end
-        
-        ss.last_pos = pos
-    else
+-- Handle auto-switching logic with End marker detection
+function playback.handle_auto_switch_v2(ss)
+    if #ss.songs == 0 or ss.switch_cooldown > 0 then
         if ss.switch_cooldown > 0 then
             ss.switch_cooldown = ss.switch_cooldown - 1
         end
+        return
     end
+    
+    local is_playing = reaper.GetPlayStateEx(0) == 1
+    local pos = reaper.GetPlayPosition2Ex(0)
+    
+    -- Get the End marker position if it exists
+    local end_marker_pos = nil
+    for i = 0, reaper.CountProjectMarkers(0) - 1 do
+        local retval, isrgn, pos_marker, rgnend, name, markidx = reaper.EnumProjectMarkers(i)
+        if name == "End" and not isrgn then
+            end_marker_pos = pos_marker
+            break
+        end
+    end
+    
+    -- Log position every 30 frames
+    ss.loop_check_counter = ss.loop_check_counter + 1
+    if ss.loop_check_counter % 30 == 0 then
+        local end_info = end_marker_pos and string.format("%.2f", end_marker_pos) or "none"
+        ss.log_file("MONITOR: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " end_marker=" .. end_info .. " playing=" .. (is_playing and "yes" or "no"))
+    end
+    
+    if is_playing then
+        -- Detect when playback passes the End marker
+        if end_marker_pos and ss.last_pos < end_marker_pos and pos >= end_marker_pos then
+            ss.log_file("END_MARKER_REACHED: index=" .. ss.current_index .. " pos=" .. string.format("%.2f", pos) .. " marker_pos=" .. string.format("%.2f", end_marker_pos))
+            
+            -- If this is the LAST song, just stop
+            if ss.current_index >= #ss.songs then
+                ss.log_file("LAST_SONG: stopping playback")
+                reaper.OnStopButtonEx(0)
+            else
+                -- Auto-switch to next song
+                ss.log_file("AUTO_SWITCH: End marker reached at index " .. ss.current_index .. ", switching to next")
+                reaper.OnStopButtonEx(0)
+                
+                local next_idx = ss.current_index + 1
+                playback.load_song_no_play(next_idx, ss)
+                ss.switch_cooldown = 10
+                ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx)
+            end
+        end
+    else
+        -- Playback stopped - check if we were near the end marker (song finished)
+        if end_marker_pos and ss.last_pos >= end_marker_pos - 2 and ss.last_pos > 0 then
+            ss.log_file("SONG_FINISHED: index=" .. ss.current_index .. " last_pos=" .. string.format("%.2f", ss.last_pos))
+            
+            -- If this is the LAST song, just stop
+            if ss.current_index >= #ss.songs then
+                ss.log_file("LAST_SONG: finished")
+            else
+                -- Auto-switch to next song
+                ss.log_file("AUTO_SWITCH: song finished at index " .. ss.current_index .. ", switching to next")
+                
+                local next_idx = ss.current_index + 1
+                playback.load_song_no_play(next_idx, ss)
+                ss.switch_cooldown = 10
+                ss.log_file("AUTO_SWITCH: scheduled load_song_no_play for index " .. next_idx)
+            end
+            ss.last_pos = 0
+        elseif not is_playing then
+            ss.switch_cooldown = 0
+        end
+    end
+    
+    ss.last_pos = pos
 end
 
 return playback
