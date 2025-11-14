@@ -1,11 +1,9 @@
 {
   "ui_font": "Menlo",
-  "available_fonts": [
-    "Arial",
-    "Menlo",
-    "Courier New",
-    "Courier",
-    "Monaco",
-    "Helvetica"
-  ]
+  "font_size_multiplier": 1.00,
+  "background_image": "",
+  "window_w": 700,
+  "window_h": 750,
+  "available_fonts": ["Arial", "Menlo", "Courier New", "Courier", "Monaco", "Helvetica"]
 }
+
