@@ -70,6 +70,8 @@ Full-featured transport control interface with:
 - **Background image** - Configure custom PNG background image (gear icon, Background tab)
 - **Auto-switch detection** - Watches for End markers and switches songs automatically
 
+![Transport UI with background image](screenshots/transport_ui.png)
+
 #### `switcher.lua` (Headless Auto-Switch)
 
 Background auto-switch script without UI:
@@ -90,6 +92,8 @@ Full gfx-based UI editor for managing your setlist:
 - File picker for easy path selection
 - Automatic backup on save (`setlist.json.bak`)
 - Modular architecture (7 focused modules for better maintainability)
+
+![Setlist Editor](screenshots/setlist_editor.png)
 
 ## Setup
 
