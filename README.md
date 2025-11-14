@@ -14,6 +14,7 @@ Modular Lua design with clear separation of concerns:
 - 9 focused modules for auto-switching and UI
 - Handles playback control and setlist management
 - Modular transport with state, config, UI, input, and playback modules
+- Configurable background image support with PNG rendering
 
 ### Setlist Editor (setlist_editor.lua)
 - 7 focused modules for UI and file management
@@ -31,6 +32,7 @@ switcher_transport.lua - Main entry point + loop/UI control
 ├── modules/state.lua
 ├── modules/config.lua
 ├── modules/fonts.lua
+├── modules/image_loader.lua
 ├── modules/ui.lua
 ├── modules/ui_components.lua
 ├── modules/input.lua
@@ -65,6 +67,7 @@ Full-featured transport control interface with:
 - **File clicking** - Click any song in the list to select it, then press Play
 - **Manual navigation** - Use << and >> buttons to jump songs
 - **Font picker** - Gear icon in header to customize UI font and size
+- **Background image** - Configure custom PNG background image (gear icon, Background tab)
 - **Auto-switch detection** - Watches for End markers and switches songs automatically
 
 #### `switcher.lua` (Headless Auto-Switch)
@@ -119,6 +122,7 @@ ReaperSongSwitcher/
     ├── state.lua
     ├── config.lua
     ├── fonts.lua
+    ├── image_loader.lua
     ├── ui.lua
     ├── ui_components.lua
     ├── input.lua
@@ -132,6 +136,18 @@ ReaperSongSwitcher/
     ├── editor_draw.lua
     ├── editor_dialogs.lua
     └── editor_json.lua
+```
+
+**Configure `config.json` (font and background settings):**
+
+```json
+{
+  "font": {
+    "name": "Arial",
+    "size": 16
+  },
+  "background_image": "/path/to/background.png"
+}
 ```
 
 **Configure `setlist.json`:**
@@ -176,12 +192,21 @@ Open to add/edit/reorder songs in your setlist.
 - Also detects if playback stops near the End marker (within 2 seconds) to catch Reaper's auto-stop before the exact marker position
 - Waits one frame for the next project to load, then starts playing
 
+**Background Image Rendering:**
+
+- PNG images loaded via `gfx.loadimg()` into buffer index 25
+- Dimensions retrieved with `gfx.getimgdim()` and rendered with `gfx.blit()`
+- Blits at full destination size (stretches/shrinks to fit transport window)
+- Persisted in `config.json` under `background_image` field
+- Selected via file browser in gear icon config menu (Background tab)
+
 **Module Responsibilities:**
 
 - **state.lua** - Initializes all global state variables with safe defaults
-- **config.lua** - Loads/saves font configuration from JSON
+- **config.lua** - Loads/saves font and background_image configuration from JSON
 - **fonts.lua** - Detects and manages system fonts
-- **ui.lua** - Renders font picker and setlist load dialogs
+- **image_loader.lua** - PNG loading and rendering wrapper using gfx API
+- **ui.lua** - Renders font picker, background image selector, and multi-tab config UI
 - **ui_components.lua** - Draws main UI (header, buttons, song list, loop toggle, transport controls)
 - **input.lua** - Handles keyboard and mouse input
 - **playback.lua** - Manages song loading and auto-switch detection with End marker logic
@@ -197,6 +222,7 @@ Open to add/edit/reorder songs in your setlist.
 ✅ **Loop toggle** with tempo-synced visual feedback  
 ✅ **Visual setlist** with current song highlighting  
 ✅ **Cyberpunk UI** with neon colors  
+✅ **Configurable background image** (PNG format)  
 ✅ **File picker** for easy path selection  
 ✅ **Backup on save** (setlist.json.bak)  
 ✅ **Keyboard support** in editor (backspace, tab, enter, escape)  
@@ -211,9 +237,16 @@ Open to add/edit/reorder songs in your setlist.
 ## Troubleshooting
 
 **Songs not switching?**
+
 - Verify each song has an `"End"` marker at the exact switch point
 - Check that `setlist.json` has correct `base_path` and song paths (.rpp files exist)
 - Ensure LOOP is OFF (green button) to play full songs through to the End marker
+
+**Background image not displaying?**
+
+- Verify PNG file exists at the configured path in `config.json`
+- Try a different PNG file (some formats may not be supported)
+- Image dimensions are automatically scaled to fit the transport window
 
 **UI looks weird?**
 
