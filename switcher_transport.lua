@@ -25,6 +25,7 @@ local playback_module = dofile(ss.script_dir .. "/modules/playback.lua")
 local ui_comp = dofile(ss.script_dir .. "/modules/ui_components.lua")
 local input = dofile(ss.script_dir .. "/modules/input.lua")
 local state_module = dofile(ss.script_dir .. "/modules/state.lua")
+local image_loader = dofile(ss.script_dir .. "/modules/image_loader.lua")
 
 function ss.log_transport(msg)
     utils.log_transport(ss.script_dir, msg)
@@ -42,16 +43,30 @@ ss.window_x = ss.window_x or 100  -- Will be loaded from config
 ss.window_y = ss.window_y or 100  -- Will be loaded from config
 ss.window_w = ss.window_w or 700  -- Will be loaded from config
 ss.window_h = ss.window_h or 750  -- Will be loaded from config
+ss.background_image = nil  -- Will be loaded from config
+ss.background_image_path = ""  -- Path to background image
+ss.show_config_menu = false  -- Config menu visibility
 
 function ss.load_config()
     ss.config = config_module.load(ss.script_dir, ss.log_transport)
     ss.current_font = ss.config.ui_font or "Menlo"
     ss.font_size_multiplier = ss.config.font_size_multiplier or 1.0
+    ss.background_image_path = ss.config.background_image or ""
+    
+    -- Load background image if configured
+    if ss.background_image_path and ss.background_image_path ~= "" then
+        ss.background_image = image_loader.load_png(ss.background_image_path, ss.log_transport)
+    end
+    
+    -- Initialize config menu state
+    ui_module.init_config_menu(ss)
+    
     return true
 end
 
-function ss.save_config(font_name, multiplier)
-    config_module.save(ss.script_dir, font_name, multiplier, ss.log_transport)
+function ss.save_config(font_name, multiplier, background_image)
+    background_image = background_image or ""
+    config_module.save(ss.script_dir, font_name, multiplier, background_image, ss.log_transport)
     ss.current_font = font_name
     ss.font_size_multiplier = multiplier
 end
@@ -190,7 +205,7 @@ end
 
 function ss.ui.draw()
     -- Draw main UI using modular components
-    ui_comp.draw_header(ss, setlist_module, utils)
+    ui_comp.draw_header(ss, setlist_module, utils, image_loader, ss.background_image)
     ui_comp.draw_header_buttons(ss, utils)
     ui_comp.draw_song_list(ss, utils)
     ui_comp.draw_loop_button(ss, utils)
@@ -213,14 +228,14 @@ function ss.main()
     playback_module.handle_auto_switch_v2(ss)
     
     -- Handle keyboard input for dialogs
-    input.handle_font_search(ss, ss.show_font_picker, ss.show_load_setlist_dialog)
+    input.handle_font_search(ss, ss.show_config_menu, ss.show_load_setlist_dialog)
     
     -- Draw UI
     ss.ui.draw()
     
-    -- Draw font picker if shown
-    if ss.show_font_picker then
-        ss.draw_font_picker()
+    -- Draw config menu if shown
+    if ss.show_config_menu then
+        ui_module.draw_config_menu(ss, fonts_module, utils, image_loader)
     end
     
     -- Draw load setlist dialog if shown

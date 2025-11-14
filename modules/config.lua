@@ -10,7 +10,8 @@ function config.load(script_dir, log_transport_fn)
             ui_font = "Menlo",
             font_size_multiplier = 1.0,
             window_w = 700,
-            window_h = 750
+            window_h = 750,
+            background_image = ""
         }
     end
     
@@ -21,7 +22,8 @@ function config.load(script_dir, log_transport_fn)
         ui_font = "Menlo",
         font_size_multiplier = 1.0,
         window_w = 700,
-        window_h = 750
+        window_h = 750,
+        background_image = ""
     }
     
     -- Parse JSON values
@@ -42,14 +44,22 @@ function config.load(script_dir, log_transport_fn)
     if w_match then cfg.window_w = tonumber(w_match) end
     if h_match then cfg.window_h = tonumber(h_match) end
     
+    local bg_match = string.match(content, '"background_image"%s*:%s*"([^"]*)"')
+    if bg_match then
+        cfg.background_image = bg_match
+        log_transport_fn("Loaded background image from config: " .. cfg.background_image)
+    end
+    
     return cfg
 end
 
-function config.save(script_dir, font_name, multiplier, log_transport_fn)
+function config.save(script_dir, font_name, multiplier, background_image, log_transport_fn)
     multiplier = multiplier or 1.0
+    background_image = background_image or ""
     local config_file = script_dir .. "/config.json"
     local content = '{\n  "ui_font": "' .. font_name .. '",\n  "font_size_multiplier": ' .. 
-                    string.format("%.2f", multiplier) .. ',\n  "window_w": 700,\n  "window_h": 750,\n' ..
+                    string.format("%.2f", multiplier) .. ',\n  "background_image": "' .. background_image .. '",\n' ..
+                    '  "window_w": 700,\n  "window_h": 750,\n' ..
                     '  "available_fonts": ["Arial", "Menlo", "Courier New", "Courier", "Monaco", "Helvetica"]\n}\n'
     
     local f = io.open(config_file, "w")
@@ -57,6 +67,9 @@ function config.save(script_dir, font_name, multiplier, log_transport_fn)
         f:write(content)
         f:close()
         log_transport_fn("Saved config: " .. font_name .. " (multiplier: " .. string.format("%.2f", multiplier) .. ")")
+        if background_image ~= "" then
+            log_transport_fn("Background image: " .. background_image)
+        end
         return true
     end
     return false

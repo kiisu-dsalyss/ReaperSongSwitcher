@@ -4,12 +4,17 @@
 local ui_comp = {}
 
 -- Draw header with setlist title and current filename
-function ui_comp.draw_header(ss, setlist_module, utils)
+function ui_comp.draw_header(ss, setlist_module, utils, image_loader, bg_image)
     local w, h = gfx.w, gfx.h
     
-    -- Background
-    gfx.set(0.08, 0.12, 0.15)
-    gfx.rect(0, 0, w, h, true)
+    -- Draw background image if available, otherwise use solid color
+    if bg_image and image_loader then
+        image_loader.draw_centered_background(bg_image, 0, 0, w, h, 0.08, 0.12, 0.15)
+    else
+        -- Fallback to solid color background
+        gfx.set(0.08, 0.12, 0.15)
+        gfx.rect(0, 0, w, h, true)
+    end
     
     -- Header
     gfx.set(0.1, 0.18, 0.25)
@@ -105,7 +110,7 @@ function ui_comp.draw_header_buttons(ss, utils)
     gfx.circle(cx, cy, inner_r * 0.35, true)
     
     if ss.ui.was_clicked(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
-        ss.show_font_picker = true
+        ss.show_config_menu = true
     end
 end
 
