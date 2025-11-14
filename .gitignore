@@ -2,6 +2,10 @@
 setlist.json
 fonts_list.txt
 
+# Fonts (license concerns)
+*.ttf
+*.otf
+
 # Python
 __pycache__/
 *.py[cod]
