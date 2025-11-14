@@ -63,7 +63,6 @@ Full-featured transport control interface with:
 - **Loop toggle** - Large button to control intro/main section playback
   - 🟡 Yellow when **LOOP ON** - Plays the intro loop continuously (ambient sound between songs)
   - 🟢 Green pulsing when **LOOP OFF** - Plays the full song from intro through to end, pulses in sync with tempo!
-- **Cyberpunk styling** - Dark blue background with neon cyan/magenta/green accents
 - **File clicking** - Click any song in the list to select it, then press Play
 - **Manual navigation** - Use << and >> buttons to jump songs
 - **Font picker** - Gear icon in header to customize UI font and size
@@ -261,7 +260,6 @@ Open to add/edit/reorder songs in your setlist.
 ✅ **Manual transport controls** (play, stop, skip, back)  
 ✅ **Loop toggle** with tempo-synced visual feedback  
 ✅ **Visual setlist** with current song highlighting  
-✅ **Cyberpunk UI** with neon colors  
 ✅ **Configurable background image** (PNG format)  
 ✅ **File picker** for easy path selection  
 ✅ **Backup on save** (setlist.json.bak)  
