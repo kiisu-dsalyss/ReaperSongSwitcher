@@ -1,5 +1,6 @@
 -- REAPER SONG SWITCHER - TRANSPORT CONTROL UI
 -- Auto-switches songs with visual transport controls
+-- Modularized version with imports
 
 -- Set to false to disable console output
 local ENABLE_CONSOLE_OUTPUT = false
@@ -11,12 +12,20 @@ local ss = _G.SS
 ss.script_dir = reaper.GetResourcePath() .. "/Scripts/ReaperSongSwitcher"
 ss.transport_log = ss.script_dir .. "/switcher_transport.log"
 
+-- Add script directory to Lua path for module loading
+package.path = ss.script_dir .. "/?.lua;" .. ss.script_dir .. "/?/init.lua;" .. package.path
+
+-- Load modules with explicit paths
+local config_module = dofile(ss.script_dir .. "/modules/config.lua")
+local fonts_module = dofile(ss.script_dir .. "/modules/fonts.lua")
+local setlist_module = dofile(ss.script_dir .. "/modules/setlist.lua")
+local utils = dofile(ss.script_dir .. "/modules/utils.lua")
+local ui_module = dofile(ss.script_dir .. "/modules/ui.lua")
+local playback_module = dofile(ss.script_dir .. "/modules/playback.lua")
+local ui_comp = dofile(ss.script_dir .. "/modules/ui_components.lua")
+
 function ss.log_transport(msg)
-    local f = io.open(ss.transport_log, "a")
-    if f then
-        f:write("[" .. os.date("%Y-%m-%d %H:%M:%S") .. "] " .. msg .. "\n")
-        f:close()
-    end
+    utils.log_transport(ss.script_dir, msg)
 end
 
 -- Set to a system font that Reaper can use
@@ -33,57 +42,19 @@ ss.window_w = ss.window_w or 700  -- Will be loaded from config
 ss.window_h = ss.window_h or 750  -- Will be loaded from config
 
 function ss.load_config()
-    local f = io.open(ss.config_file, "r")
-    if not f then
-        -- Create default config
-        ss.log_transport("Creating default config.json")
-        return false
-    end
-    local content = f:read("*a")
-    f:close()
-    
-    -- Simple JSON parsing for ui_font and font_size_multiplier
-    local font_match = string.match(content, '"ui_font"%s*:%s*"([^"]+)"')
-    if font_match then
-        ss.current_font = font_match
-        ss.log_transport("Loaded font from config: " .. ss.current_font)
-    end
-    
-    local mult_match = string.match(content, '"font_size_multiplier"%s*:%s*([%d.]+)')
-    if mult_match then
-        ss.font_size_multiplier = tonumber(mult_match)
-        ss.log_transport("Loaded font size multiplier from config: " .. ss.font_size_multiplier)
-    else
-        ss.font_size_multiplier = 1.0  -- Default
-    end
-    
-    -- Load window position and size
-    local wx = string.match(content, '"window_x"%s*:%s*(%d+)')
-    local wy = string.match(content, '"window_y"%s*:%s*(%d+)')
-    local ww = string.match(content, '"window_w"%s*:%s*(%d+)')
-    local wh = string.match(content, '"window_h"%s*:%s*(%d+)')
-    
-    if wx then ss.window_x = tonumber(wx) end
-    if wy then ss.window_y = tonumber(wy) end
-    if ww then ss.window_w = tonumber(ww) end
-    if wh then ss.window_h = tonumber(wh) end
-    
-    ss.log_transport("Loaded window position: x=" .. (ss.window_x or "default") .. " y=" .. (ss.window_y or "default"))
-    
+    ss.config = config_module.load(ss.script_dir, ss.log_transport)
+    ss.current_font = ss.config.ui_font or "Menlo"
+    ss.font_size_multiplier = ss.config.font_size_multiplier or 1.0
     return true
 end
 
-function ss.save_window_position()
-    -- Store window position and size in ExtState so we can restore it on next run
-    reaper.SetExtState("ReaperSongSwitcher", "window_x", tostring(math.floor(gfx.x)), true)
-    reaper.SetExtState("ReaperSongSwitcher", "window_y", tostring(math.floor(gfx.y)), true)
-    reaper.SetExtState("ReaperSongSwitcher", "window_w", tostring(gfx.w), true)
-    reaper.SetExtState("ReaperSongSwitcher", "window_h", tostring(gfx.h), true)
-    ss.log_transport("Saved window state: x=" .. math.floor(gfx.x) .. " y=" .. math.floor(gfx.y) .. " w=" .. gfx.w .. " h=" .. gfx.h)
+function ss.save_config(font_name, multiplier)
+    config_module.save(ss.script_dir, font_name, multiplier, ss.log_transport)
+    ss.current_font = font_name
+    ss.font_size_multiplier = multiplier
 end
 
 function ss.load_window_state()
-    -- Load saved window position and size from ExtState
     local x = reaper.GetExtState("ReaperSongSwitcher", "window_x")
     local y = reaper.GetExtState("ReaperSongSwitcher", "window_y")
     local w = reaper.GetExtState("ReaperSongSwitcher", "window_w")
@@ -105,27 +76,20 @@ function ss.load_window_state()
     return false
 end
 
-function ss.save_config(font_name, multiplier)
-    multiplier = multiplier or ss.font_size_multiplier or 1.0
-    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "font_size_multiplier": ' .. string.format("%.2f", multiplier) .. ',\n  "window_x": ' .. (ss.window_x or 100) .. ',\n  "window_y": ' .. (ss.window_y or 100) .. ',\n  "window_w": ' .. (ss.window_w or 700) .. ',\n  "window_h": ' .. (ss.window_h or 750) .. ',\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
-    local f = io.open(ss.config_file, "w")
-    if f then
-        f:write(content)
-        f:close()
-        ss.current_font = font_name
-        ss.font_size_multiplier = multiplier
-        ss.log_transport("Saved font config: " .. font_name .. " (multiplier: " .. string.format("%.2f", multiplier) .. ")")
-    end
+function ss.save_window_position()
+    reaper.SetExtState("ReaperSongSwitcher", "window_x", tostring(math.floor(gfx.x)), true)
+    reaper.SetExtState("ReaperSongSwitcher", "window_y", tostring(math.floor(gfx.y)), true)
+    reaper.SetExtState("ReaperSongSwitcher", "window_w", tostring(gfx.w), true)
+    reaper.SetExtState("ReaperSongSwitcher", "window_h", tostring(gfx.h), true)
+    ss.log_transport("Saved window state: x=" .. math.floor(gfx.x) .. " y=" .. math.floor(gfx.y) .. " w=" .. gfx.w .. " h=" .. gfx.h)
 end
 
 function ss.set_font(size, bold)
-    local font_flags = bold and 'b' or ''
-    -- Use font from config, fall back to hardcoded PREFERRED_FONT
-    local font_to_use = ss.current_font or PREFERRED_FONT
-    gfx.setfont(1, font_to_use, size, font_flags)
-    -- Debug: log first time only
+    local multiplier = ss.font_size_multiplier or 1.0
+    local scaled_size = math.floor(size * multiplier)
+    fonts_module.set_font(gfx, ss.current_font, scaled_size, bold)
     if not ss.font_logged then
-        ss.log_file("set_font() called with: font=" .. font_to_use .. ", size=" .. size .. ", bold=" .. tostring(bold))
+        ss.log_file("set_font() called with: font=" .. ss.current_font .. ", size=" .. scaled_size .. ", bold=" .. tostring(bold))
         ss.font_logged = true
     end
 end
@@ -152,6 +116,8 @@ ss.ui.loop_initialized = ss.ui.loop_initialized or false  -- Track if we've sync
 ss.ui.pulse_phase = ss.ui.pulse_phase or 0  -- For pulsing animation
 ss.font_logged = ss.font_logged or false  -- Debug flag for font logging
 ss.show_font_picker = ss.show_font_picker or false  -- Show font picker dialog
+ss.font_search = ss.font_search or ""  -- Font search string
+ss.setlist_load_input = ss.setlist_load_input or ""  -- Setlist load input string
 ss.available_fonts = ss.available_fonts or {}  -- Will be populated by get_system_fonts()
 ss.font_picker_scroll = ss.font_picker_scroll or 0
 ss.font_picker_dragging = ss.font_picker_dragging or false
@@ -162,52 +128,9 @@ ss.window_save_counter = ss.window_save_counter or 0  -- Counter for periodic wi
 function ss.get_system_fonts()
     if #ss.available_fonts > 0 then
         ss.log_transport("Fonts already loaded: " .. #ss.available_fonts)
-        return  -- Already loaded
+        return
     end
-    
-    local fonts = {}
-    local font_set = {}  -- Track unique fonts
-    
-    ss.log_transport("Starting font detection...")
-    
-    -- Read from pre-generated fonts list file
-    local fonts_list_file = ss.script_dir .. "/fonts_list.txt"
-    ss.log_transport("Fonts list file: " .. fonts_list_file)
-    
-    local f = io.open(fonts_list_file, "r")
-    if f then
-        ss.log_transport("Fonts file opened")
-        local count = 0
-        for line in f:lines() do
-            -- Clean up the font name (trim whitespace)
-            line = line:gsub("^%s+", ""):gsub("%s+$", "")
-            
-            -- Only filter: empty strings and absurdly long names
-            if line ~= "" and #line < 200 then
-                if not font_set[line] then
-                    table.insert(fonts, line)
-                    font_set[line] = true
-                    count = count + 1
-                    if count <= 10 then
-                        ss.log_transport("  Font " .. count .. ": " .. line)
-                    end
-                end
-            end
-        end
-        f:close()
-        ss.log_transport("Fonts file closed. Total fonts found: " .. count)
-    else
-        ss.log_transport("ERROR: Could not open fonts_list.txt!")
-    end
-    
-    -- Fallback list if file didn't work
-    if #fonts == 0 then
-        ss.log_transport("No fonts found, using fallback list")
-        fonts = {"Arial", "Menlo", "Courier New", "Courier", "Monaco", "Helvetica", "Times New Roman", "Verdana"}
-    end
-    
-    ss.available_fonts = fonts
-    ss.log_transport("Font loading complete: " .. #fonts .. " fonts available")
+    ss.available_fonts = fonts_module.load_system_fonts(ss.script_dir, ss.log_transport)
 end
 
 function ss.log(msg)
@@ -217,132 +140,32 @@ function ss.log(msg)
 end
 
 function ss.log_file(msg)
-    local ok, err
-    local logfile = ss.script_dir .. "/switcher.log"
-    local f, ferr = io.open(logfile, "a")
-    if not f then
-        os.execute('mkdir -p "' .. ss.script_dir .. '"')
-        f, ferr = io.open(logfile, "a")
-        if not f then
-            ss.log("ERROR: cannot open log file: " .. tostring(ferr))
-            return
-        end
-    end
-    local ts = os.date("%Y-%m-%d %H:%M:%S")
-    f:write("[" .. ts .. "] " .. msg .. "\n")
-    f:close()
+    utils.log_switcher(ss.script_dir, msg)
 end
 
 function ss.load_json_from_path(filepath)
-    -- Generic function to load a setlist from any JSON file
-    local f = io.open(filepath, "r")
-    if not f then
-        ss.log("ERROR: Could not open file: " .. filepath)
-        ss.log_file("ERROR: Could not open file: " .. filepath)
-        return false
+    local result = setlist_module.load_from_path(filepath, ss.log, ss.log_file)
+    if result then
+        ss.current_setlist_path = result.path
+        ss.base_path = result.base_path
+        ss.songs = result.songs
+        ss.current_index = 1
+        ss.ui.selected = 1
+        return true
     end
-    local content = f:read("*a")
-    f:close()
-    
-    local base_path = string.match(content, '"base_path"%s*:%s*"([^"]+)"')
-    if not base_path then
-        ss.log("ERROR: No base_path in JSON at " .. filepath)
-        ss.log_file("ERROR: No base_path in JSON at " .. filepath)
-        return false
-    end
-    
-    local songs = {}
-    for name, path in string.gmatch(content, '"name"%s*:%s*"([^"]+)".-"path"%s*:%s*"([^"]+)"') do
-        table.insert(songs, {name = name, path = path})
-    end
-    
-    if #songs == 0 then
-        ss.log("ERROR: No songs in JSON at " .. filepath)
-        ss.log_file("ERROR: No songs parsed from " .. filepath)
-        return false
-    end
-    
-    -- Success - update global state
-    ss.current_setlist_path = filepath
-    ss.base_path = base_path
-    ss.songs = songs
-    ss.current_index = 1
-    ss.ui.selected = 1
-    
-    ss.log("✓ Loaded " .. #songs .. " songs from " .. filepath)
-    ss.log_file("Loaded " .. #songs .. " songs from " .. filepath)
-    
-    return true
+    return false
 end
 
 function ss.load_json()
-    -- Load the default setlist.json (or currently selected setlist)
     return ss.load_json_from_path(ss.current_setlist_path or ss.setlist_file)
 end
 
 function ss.load_song(idx)
-    if idx < 1 or idx > #ss.songs then return end
-    local song = ss.songs[idx]
-    local path = ss.base_path .. "/" .. song.path
-    
-    if io.open(path, "r") then
-        io.close()
-        ss.log("► " .. idx .. ". " .. song.name)
-        ss.log_file("load_song(): Loading project: " .. path)
-        reaper.Main_openProject(path)
-        ss.current_index = idx
-        ss.ui.selected = idx
-        ss.last_pos = 0
-        
-        -- Sync loop state with new project
-        local loop_state = reaper.GetSetRepeat(-1)
-        ss.ui.loop_enabled = (loop_state == 1)
-        ss.log_file("load_song(): Synced loop state: " .. (ss.ui.loop_enabled and "ON" or "OFF"))
-        
-        -- Set play position to 0 first
-        reaper.SetEditCurPos(0, false, false)
-        
-        -- Use action ID 1007 - PLAY (from Reaper API docs)
-        reaper.Main_OnCommand(1007, 0)
-        
-        ss.log("   Playing")
-        ss.log_file("load_song(): Started playing index " .. idx .. " - " .. song.name)
-    else
-        ss.log("ERROR: File not found: " .. path)
-        ss.log_file("ERROR: File not found in load_song(): " .. path)
-    end
+    playback_module.load_song(idx, ss)
 end
 
--- Load song without playing (for auto-switch sequence: stop, load, wait, play)
 function ss.load_song_no_play(idx)
-    if idx < 1 or idx > #ss.songs then return end
-    local song = ss.songs[idx]
-    local path = ss.base_path .. "/" .. song.path
-    
-    if io.open(path, "r") then
-        io.close()
-        ss.log("► " .. idx .. ". " .. song.name .. " (loaded, will play next frame)")
-        ss.log_file("load_song_no_play(): Loaded project: " .. path)
-        reaper.Main_openProject(path)
-        ss.current_index = idx
-        ss.ui.selected = idx
-        ss.last_pos = 0
-        
-        -- Sync loop state with new project
-        local loop_state = reaper.GetSetRepeat(-1)
-        ss.ui.loop_enabled = (loop_state == 1)
-        ss.log_file("load_song_no_play(): Synced loop state: " .. (ss.ui.loop_enabled and "ON" or "OFF"))
-        
-        -- Set play position to 0 first
-        reaper.SetEditCurPos(0, false, false)
-        
-        -- DO NOT PLAY YET - just set state flag, play will happen next frame
-        ss.auto_switch_state = 1
-        ss.log_file("load_song_no_play(): set auto_switch_state=1 for index " .. idx)
-    else
-        ss.log("ERROR: File not found: " .. path)
-        ss.log_file("ERROR: File not found in load_song_no_play(): " .. path)
-    end
+    playback_module.load_song_no_play(idx, ss)
 end
 
 function ss.init()
@@ -373,715 +196,33 @@ function ss.init()
 end
 
 -- Font picker UI with search
+
+-- Font picker UI with search
 function ss.draw_font_picker()
-    local w = gfx.w
-    local h = gfx.h
-    local dialog_w = 480
-    local dialog_h = 680
-    -- Ensure the dialog always fits inside the gfx window (prevents Close from being offscreen)
-    dialog_w = math.min(dialog_w, math.max(200, w - 40))
-    dialog_h = math.min(dialog_h, math.max(180, h - 40))
-    local dialog_x = (w - dialog_w) / 2
-    local dialog_y = (h - dialog_h) / 2
-    
-    -- Dark overlay
-    gfx.set(0, 0, 0, 0.7)
-    gfx.rect(0, 0, w, h, true)
-    
-    -- Dialog box
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, true)
-    gfx.set(0, 1, 1)
-    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, false)
-    
-    -- Title
-    gfx.set(0, 1, 1)
-    ss.set_font(16, true)
-    gfx.x, gfx.y = dialog_x + 20, dialog_y + 15
-    gfx.drawstr("SELECT FONT (" .. #ss.available_fonts .. " available)")
-    
-    -- Search box
-    ss.font_search = ss.font_search or ""
-    local search_y = dialog_y + 45
-    gfx.set(0.1, 0.2, 0.3)
-    gfx.rect(dialog_x + 10, search_y, dialog_w - 20, 28, true)
-    gfx.set(0, 1, 1)
-    gfx.rect(dialog_x + 10, search_y, dialog_w - 20, 28, false)
-    
-    gfx.set(0.7, 0.7, 0.7)
-    ss.set_font(12, false)
-    gfx.x, gfx.y = dialog_x + 20, search_y + 6
-    gfx.drawstr("Search: " .. ss.font_search .. (math.floor(reaper.time_precise() * 2) % 2 == 0 and "_" or ""))
-    
-    -- Build filtered font list
-    local filtered_fonts = {}
-    local search_lower = ss.font_search:lower()
-    for i, font_name in ipairs(ss.available_fonts) do
-        if search_lower == "" or font_name:lower():find(search_lower, 1, true) then
-            table.insert(filtered_fonts, font_name)
-        end
-    end
-    
-    -- Font list with scrolling
-    local list_y = search_y + 40
-    -- Make the list container smaller so the controls + close button fit inside the dialog
-    local list_h = dialog_h - 220
-    -- Scale the item height slightly with the global font multiplier so spacing stays sensible
-    local item_h = math.max(18, math.floor(24 * ss.font_size_multiplier))  -- Bigger rows for readability
-    local max_visible = math.max(1, math.floor(list_h / item_h))
-    local scrollbar_w = 12
-    local list_w = dialog_w - 20 - scrollbar_w - 5
-    
-    -- Handle scroll wheel (normalized steps)
-    local scroll_delta = gfx.mouse_wheel
-    if scroll_delta ~= 0 then
-        local step = 3  -- scroll N rows per wheel tick
-        local max_scroll_wheel = math.max(0, #filtered_fonts - max_visible)
-        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll - scroll_delta * step, max_scroll_wheel))
-        gfx.mouse_wheel = 0
-    end
-    
-    -- Draw font list
-    for i = 1, #filtered_fonts do
-        local visible_idx = i - ss.font_picker_scroll
-        if visible_idx < 1 or visible_idx > max_visible then
-            goto continue_fonts
-        end
-        
-        local font_name = filtered_fonts[i]
-        local y = list_y + (visible_idx - 1) * item_h
-        local is_current = (font_name == ss.current_font)
-        
-        -- Item background with alternating colors
-        if is_current then
-            gfx.set(0, 0.8, 0.8)  -- Cyan highlight for current
-        elseif ss.ui.mouse_in(dialog_x + 10, y, list_w, item_h) then
-            gfx.set(0.2, 0.4, 0.5)  -- Hover
-        else
-            -- Alternate between two shades for readability
-            if i % 2 == 0 then
-                gfx.set(0.08, 0.15, 0.2)  -- Slightly darker
-            else
-                gfx.set(0.12, 0.19, 0.26)  -- Slightly lighter
-            end
-        end
-        gfx.rect(dialog_x + 10, y, list_w, item_h, true)
-        
-        -- Font name text
-        gfx.set(1, 1, 1)
-        ss.set_font(13, false)
-        gfx.x, gfx.y = dialog_x + 20, y + 3
-        local display_name = font_name
-        if #font_name > 50 then
-            display_name = font_name:sub(1, 47) .. "..."
-        end
-        gfx.drawstr(display_name)
-        
-        -- Click handler
-        if ss.ui.was_clicked(dialog_x + 10, y, list_w, item_h) then
-            ss.save_config(font_name)
-            ss.show_font_picker = false
-            ss.font_search = ""  -- Clear search
-        end
-        
-        ::continue_fonts::
-    end
-    
-    -- Draw scrollbar and handle interactions
-    if #filtered_fonts > max_visible then
-        local scrollbar_x = dialog_x + dialog_w - scrollbar_w - 10
-        local scrollbar_h = list_h
-        local max_scroll = math.max(0, #filtered_fonts - max_visible)
-
-        -- Protect against division by zero if something odd happens
-        local scroll_ratio = 0
-        if max_scroll > 0 then
-            scroll_ratio = ss.font_picker_scroll / max_scroll
-        end
-
-        local thumb_h = math.max(20, scrollbar_h * (max_visible / #filtered_fonts))
-        local thumb_y = list_y + (scroll_ratio * math.max(0, (scrollbar_h - thumb_h)))
-
-        -- Scrollbar track
-        gfx.set(0.05, 0.1, 0.15)
-        gfx.rect(scrollbar_x, list_y, scrollbar_w, scrollbar_h, true)
-
-        -- Scrollbar thumb
-        gfx.set(0, 0.6, 0.6)
-        gfx.rect(scrollbar_x, thumb_y, scrollbar_w, thumb_h, true)
-
-        -- Click on track jumps
-        if ss.ui.was_clicked(scrollbar_x, list_y, scrollbar_w, scrollbar_h) then
-            local mx, my = gfx.mouse_x, gfx.mouse_y
-            -- position click relative to track
-            local rel = 0
-            if scrollbar_h - thumb_h > 0 then
-                rel = (my - list_y) / (scrollbar_h - thumb_h)
-            end
-            rel = math.max(0, math.min(1, rel))
-            ss.font_picker_scroll = math.floor(rel * max_scroll + 0.5)
-        end
-
-        -- Drag thumb
-        if (gfx.mouse_cap & 1) == 1 and ss.ui.mouse_in(scrollbar_x, thumb_y, scrollbar_w, thumb_h) and not ss.font_picker_dragging then
-            -- start drag
-            ss.font_picker_dragging = true
-            ss.font_picker_drag_offset = gfx.mouse_y - thumb_y
-        end
-        if ss.font_picker_dragging then
-            if (gfx.mouse_cap & 1) == 0 then
-                ss.font_picker_dragging = false
-            else
-                local my = gfx.mouse_y
-                local new_thumb_y = my - ss.font_picker_drag_offset
-                new_thumb_y = math.max(list_y, math.min(list_y + scrollbar_h - thumb_h, new_thumb_y))
-                local rel = 0
-                if scrollbar_h - thumb_h > 0 then
-                    rel = (new_thumb_y - list_y) / (scrollbar_h - thumb_h)
-                end
-                ss.font_picker_scroll = math.floor(rel * max_scroll + 0.5)
-            end
-        end
-    end
-    
-    -- Font size multiplier controls (below the font list)
-    local controls_y = list_y + list_h + 8
-    local btn_w = 50
-    local btn_h = 28
-    local minus_x = dialog_x + 20
-    local plus_x = dialog_x + dialog_w - btn_w - 20
-    local label_x = dialog_x + dialog_w / 2 - 30
-    
-    -- Minus button (decrease font size)
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(minus_x, controls_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(minus_x, controls_y, btn_w, btn_h) then
-        gfx.set(1, 0.5, 1)  -- magenta hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    gfx.rect(minus_x, controls_y, btn_w, btn_h, false)
-    
-    gfx.set(0.3, 0.8, 0.8)
-    ss.set_font(16, true)
-    gfx.x, gfx.y = minus_x + 14, controls_y + 4
-    gfx.drawstr("-")
-    
-    if ss.ui.was_clicked(minus_x, controls_y, btn_w, btn_h) then
-        ss.font_size_multiplier = math.max(0.7, ss.font_size_multiplier - 0.1)
-        ss.save_config(ss.current_font, ss.font_size_multiplier)
-    end
-    
-    -- Plus button (increase font size)
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(plus_x, controls_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(plus_x, controls_y, btn_w, btn_h) then
-        gfx.set(1, 0.5, 1)  -- magenta hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    gfx.rect(plus_x, controls_y, btn_w, btn_h, false)
-    
-    gfx.set(0.3, 0.8, 0.8)
-    ss.set_font(16, true)
-    gfx.x, gfx.y = plus_x + 12, controls_y + 2
-    gfx.drawstr("+")
-    
-    if ss.ui.was_clicked(plus_x, controls_y, btn_w, btn_h) then
-        ss.font_size_multiplier = math.min(1.5, ss.font_size_multiplier + 0.1)
-        ss.save_config(ss.current_font, ss.font_size_multiplier)
-    end
-    
-    -- Font size label
-    gfx.set(0.7, 0.7, 0.7)
-    ss.set_font(12, false)
-    gfx.x, gfx.y = label_x, controls_y + 7
-    gfx.drawstr(string.format("%.0f%%", ss.font_size_multiplier * 100))
-    
-    -- Close button (below the size controls)
-    local close_y = controls_y + btn_h + 10
-    gfx.set(1, 0.2, 0.2)
-    gfx.rect(dialog_x + 20, close_y, dialog_w - 40, 30, true)
-    gfx.set(1, 1, 1)
-    ss.set_font(12, true)
-    gfx.x, gfx.y = dialog_x + dialog_w/2 - 20, close_y + 8
-    gfx.drawstr("CLOSE")
-    
-    if ss.ui.was_clicked(dialog_x + 20, close_y, dialog_w - 40, 30) then
-        ss.show_font_picker = false
-        ss.font_search = ""  -- Clear search
-    end
+    ui_module.draw_font_picker(ss, fonts_module, utils)
 end
 
 -- Load setlist dialog
 function ss.draw_load_setlist_dialog()
-    local w = gfx.w
-    local h = gfx.h
-    local dialog_w = 500
-    local dialog_h = 400
-    local dialog_x = (w - dialog_w) / 2
-    local dialog_y = (h - dialog_h) / 2
-    
-    -- Clamp dialog to window
-    dialog_w = math.min(dialog_w, math.max(200, w - 40))
-    dialog_h = math.min(dialog_h, math.max(150, h - 40))
-    
-    -- Dark overlay
-    gfx.set(0, 0, 0, 0.7)
-    gfx.rect(0, 0, w, h, true)
-    
-    -- Dialog box
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, true)
-    gfx.set(0, 1, 1)
-    gfx.rect(dialog_x, dialog_y, dialog_w, dialog_h, false)
-    
-    -- Title
-    gfx.set(0, 1, 1)
-    ss.set_font(16, true)
-    gfx.x, gfx.y = dialog_x + 20, dialog_y + 15
-    gfx.drawstr("LOAD SETLIST")
-    
-    -- Instructions
-    gfx.set(0.7, 0.7, 0.7)
-    ss.set_font(12, false)
-    gfx.x, gfx.y = dialog_x + 20, dialog_y + 45
-    gfx.drawstr("Enter setlist filename (in Scripts folder):")
-    
-    -- Input box
-    ss.setlist_load_input = ss.setlist_load_input or ""
-    gfx.set(0.1, 0.2, 0.3)
-    gfx.rect(dialog_x + 20, dialog_y + 75, dialog_w - 40, 30, true)
-    gfx.set(0, 1, 1)
-    gfx.rect(dialog_x + 20, dialog_y + 75, dialog_w - 40, 30, false)
-    
-    gfx.set(0.7, 0.7, 0.7)
-    ss.set_font(12, false)
-    gfx.x, gfx.y = dialog_x + 30, dialog_y + 82
-    gfx.drawstr(ss.setlist_load_input .. (math.floor(reaper.time_precise() * 2) % 2 == 0 and "_" or ""))
-    
-    -- Info text
-    gfx.set(0.5, 0.7, 0.8)
-    ss.set_font(10, false)
-    gfx.x, gfx.y = dialog_x + 20, dialog_y + 115
-    gfx.drawstr("(e.g., 'setlist.json' or 'my_songs.json')")
-    
-    gfx.x, gfx.y = dialog_x + 20, dialog_y + 130
-    gfx.drawstr("Files should be in the Scripts/ReaperSongSwitcher folder")
-    
-    -- Cancel button
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, true)
-    
-    if ss.ui.mouse_in(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
-        gfx.set(1, 0.5, 1)  -- magenta hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    gfx.rect(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, false)
-    
-    gfx.set(0.3, 0.8, 0.8)
-    ss.set_font(12, true)
-    gfx.x, gfx.y = dialog_x + 40, dialog_y + dialog_h - 40
-    gfx.drawstr("CANCEL")
-    
-    if ss.ui.was_clicked(dialog_x + 20, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
-        ss.show_load_setlist_dialog = false
-        ss.setlist_load_input = ""
-    end
-    
-    -- Load button
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, true)
-    
-    if ss.ui.mouse_in(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
-        gfx.set(0, 1, 0.4)  -- green hover
-    else
-        gfx.set(0, 1, 0)  -- green
-    end
-    gfx.rect(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35, false)
-    
-    gfx.set(0, 1, 0)
-    ss.set_font(12, true)
-    gfx.x, gfx.y = dialog_x + (dialog_w - 40) / 2 + 30, dialog_y + dialog_h - 40
-    gfx.drawstr("LOAD")
-    
-    if ss.ui.was_clicked(dialog_x + (dialog_w - 40) / 2 + 15, dialog_y + dialog_h - 50, (dialog_w - 40) / 2 - 5, 35) then
-        if ss.setlist_load_input ~= "" then
-            -- Build full path
-            local filepath = ss.script_dir .. "/" .. ss.setlist_load_input
-            -- Add .json extension if not present
-            if not filepath:match("%.json$") then
-                filepath = filepath .. ".json"
-            end
-            
-            if ss.load_json_from_path(filepath) then
-                ss.show_load_setlist_dialog = false
-                ss.setlist_load_input = ""
-                ss.log_file("Loaded setlist from user selection: " .. filepath)
-            else
-                ss.log("Failed to load setlist: " .. filepath)
-                ss.log_file("Failed to load setlist: " .. filepath)
-            end
-        end
-    end
-    
-    -- Handle keyboard input
-    local char = gfx.getchar()
-    if char > 0 then
-        if char == 8 then  -- Backspace
-            if #ss.setlist_load_input > 0 then
-                ss.setlist_load_input = ss.setlist_load_input:sub(1, -2)
-            end
-        elseif char == 13 then  -- Enter - trigger load
-            if ss.setlist_load_input ~= "" then
-                local filepath = ss.script_dir .. "/" .. ss.setlist_load_input
-                if not filepath:match("%.json$") then
-                    filepath = filepath .. ".json"
-                end
-                if ss.load_json_from_path(filepath) then
-                    ss.show_load_setlist_dialog = false
-                    ss.setlist_load_input = ""
-                end
-            end
-        elseif char == 27 then  -- Escape - close
-            ss.show_load_setlist_dialog = false
-            ss.setlist_load_input = ""
-        elseif char >= 32 and char <= 126 then  -- Printable ASCII
-            ss.setlist_load_input = ss.setlist_load_input .. string.char(char)
-        end
-    end
+    ui_module.draw_load_setlist_dialog(ss, setlist_module, utils)
 end
 
--- UI Helper functions
+-- UI helper functions
 function ss.ui.mouse_in(x, y, w, h)
-    return gfx.mouse_x >= x and gfx.mouse_x < x + w and
-           gfx.mouse_y >= y and gfx.mouse_y < y + h
+    return utils.mouse_in(gfx, x, y, w, h)
 end
 
 function ss.ui.was_clicked(x, y, w, h)
-    local clicking = (gfx.mouse_cap & 1 == 1) and ss.ui.mouse_in(x, y, w, h)
-    local was_down = (ss.ui.last_mouse_cap & 1 == 1)
-    return clicking and not was_down
+    return utils.was_clicked(gfx, x, y, w, h, ss.ui.last_mouse_cap)
 end
 
 function ss.ui.draw()
-    local w, h = gfx.w, gfx.h
-    
-    -- Background
-    gfx.set(0.08, 0.12, 0.15)
-    gfx.rect(0, 0, w, h, true)
-    
-    -- Header
-    gfx.set(0.1, 0.18, 0.25)
-    gfx.rect(0, 0, w, 50, true)
-    gfx.set(0, 1, 1)
-    gfx.rect(0, 0, w, 50, false)
-    
-    gfx.set(0, 1, 1)
-    ss.set_font(24, true)
-    gfx.x, gfx.y = 15, 12
-    gfx.drawstr("SETLIST")
-    
-    -- Display current setlist filename
-    local setlist_name = ss.current_setlist_path:match("([^/]+)$") or "setlist.json"
-    gfx.set(0.5, 0.8, 0.9)
-    ss.set_font(11, false)
-    gfx.x, gfx.y = 15, 35
-    gfx.drawstr(setlist_name)
-    
-    -- Config gear button size (define early since it's needed for load button positioning)
-    local gear_size = 24
-    
-    -- Load Setlist button (left of gear icon)
-    local load_btn_w = 60
-    local load_btn_h = 28
-    local load_btn_x = w - gear_size - 15 - load_btn_w - 15
-    local load_btn_y = 11
-    
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(load_btn_x, load_btn_y, load_btn_w, load_btn_h, true)
-    
-    if ss.ui.mouse_in(load_btn_x, load_btn_y, load_btn_w, load_btn_h) then
-        gfx.set(0, 1, 1)  -- cyan hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    gfx.rect(load_btn_x, load_btn_y, load_btn_w, load_btn_h, false)
-    
-    gfx.set(0.3, 0.8, 0.8)
-    ss.set_font(12, true)
-    gfx.x, gfx.y = load_btn_x + 8, load_btn_y + 7
-    gfx.drawstr("LOAD")
-    
-    if ss.ui.was_clicked(load_btn_x, load_btn_y, load_btn_w, load_btn_h) then
-        ss.show_load_setlist_dialog = true
-    end
-    
-    -- Config gear button (top right)
-    local gear_btn_x = w - gear_size - 15
-    local gear_btn_y = 13
-    
-    if ss.ui.mouse_in(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
-        gfx.set(1, 0.5, 1)  -- magenta hover
-    else
-        gfx.set(0.3, 0.8, 0.8)  -- cyan
-    end
-    
-    -- Draw proper gear icon
-    local cx = gear_btn_x + gear_size / 2
-    local cy = gear_btn_y + gear_size / 2
-    local outer_r = gear_size / 2 - 2
-    local inner_r = outer_r * 0.6
-    local tooth_depth = outer_r * 0.3
-    
-    -- Draw gear using filled polygon (teeth and body)
-    local points = {}
-    local num_teeth = 12
-    
-    for i = 0, num_teeth - 1 do
-        -- Outer tooth point
-        local angle_tooth = (i * math.pi * 2 / num_teeth)
-        table.insert(points, {cx + math.cos(angle_tooth) * outer_r, cy + math.sin(angle_tooth) * outer_r})
-        
-        -- Inner valley point
-        local angle_valley = ((i + 0.5) * math.pi * 2 / num_teeth)
-        table.insert(points, {cx + math.cos(angle_valley) * inner_r, cy + math.sin(angle_valley) * inner_r})
-    end
-    
-    -- Draw filled gear
-    gfx.mode = 2  -- antialiasing
-    for i = 1, #points do
-        if i == 1 then
-            gfx.line(points[i][1], points[i][2], points[#points][1], points[#points][2])
-        else
-            gfx.line(points[i][1], points[i][2], points[i-1][1], points[i-1][2])
-        end
-    end
-    
-    -- Draw center hole
-    gfx.circle(cx, cy, inner_r * 0.35, true)
-    
-    if ss.ui.was_clicked(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
-        ss.show_font_picker = true
-    end
-    
-    -- Song list area
-    local list_y = 60
-    local list_h = h - 150
-    local row_h = 40
-    local max_rows = math.floor(list_h / row_h)
-    
-    -- Draw songs
-    for i = 1, math.min(#ss.songs, max_rows) do
-        local y = list_y + (i - 1) * row_h
-        local is_current = (ss.current_index == i)
-        local is_selected = (ss.ui.selected == i)
-        local is_playing = reaper.GetPlayStateEx(0) == 1
-        
-        -- Row background - alternating stripes
-        if i % 2 == 0 then
-            gfx.set(0.08, 0.15, 0.2)
-        else
-            gfx.set(0.1, 0.18, 0.25)
-        end
-        gfx.rect(0, y, w, row_h, true)
-        
-        -- Current/selected highlight
-        if is_current and is_playing then
-            gfx.set(0, 1, 1)  -- cyan for currently playing
-            gfx.rect(0, y, w, row_h, false)
-        elseif is_selected then
-            gfx.set(1, 0, 1)  -- magenta for selected
-            gfx.rect(0, y, w, row_h, false)
-        end
-        
-        -- Song text
-        if is_current and is_playing then
-            gfx.set(0, 1, 1)  -- cyan text
-        elseif is_selected then
-            gfx.set(1, 0, 1)  -- magenta text
-        else
-            gfx.set(0.7, 0.7, 0.7)  -- normal text
-        end
-        -- Scale text size based on configured multiplier (maintains relative sizing)
-        local text_size = math.floor(18 * ss.font_size_multiplier)
-        ss.set_font(text_size, true)
-        gfx.x, gfx.y = 20, y + 11
-        gfx.drawstr(i .. ". " .. ss.songs[i].name)
-        
-        -- Click to select
-        if ss.ui.was_clicked(0, y, w, row_h) then
-            ss.ui.selected = i
-            ss.log_file("Selected song " .. i)
-        end
-    end
-    
-    -- Loop toggle button (full width)
-    local loop_btn_y = h - 280
-    local loop_btn_h = 140
-    
-    -- Check if user toggled loop (sync UI state with Reaper state changes)
-    if ss.ui.was_clicked(10, loop_btn_y, w - 20, loop_btn_h) then
-        -- Toggle Reaper's loop state via action 1068 (Toggle loop)
-        reaper.Main_OnCommand(1068, 0)
-        
-        ss.log_file("Loop toggled via button")
-    end
-    
-    -- Always read the actual loop state from Reaper, don't cache it
-    -- This ensures sync even if the user toggles loop via keyboard/menu/other UI
-    local loop_state = reaper.GetSetRepeat(-1)
-    local loop_is_enabled = (loop_state == 1)
-    
-    -- Calculate pulse effect based on tempo
-    local tempo = reaper.Master_GetTempo()
-    local beat_time = 60 / tempo  -- seconds per beat
-    local pulse_cycle = beat_time * 2  -- full pulse cycle = 2 beats
-    local phase = (reaper.time_precise() % pulse_cycle) / pulse_cycle  -- 0 to 1
-    
-    -- When disabled, pulse the opacity; when enabled, solid
-    local brightness = 1.0
-    if not loop_is_enabled then
-        -- Sine wave pulse from 0.5 to 1.0
-        brightness = 0.5 + 0.5 * math.sin(phase * math.pi)
-    end
-    
-    -- Set background color based on state with pulse effect
-    if loop_is_enabled then
-        gfx.set(1, 1, 0)  -- yellow when enabled
-    else
-        gfx.set(0 * brightness, 1 * brightness, 0 * brightness)  -- pulsing green when disabled
-    end
-    gfx.rect(10, loop_btn_y, w - 20, loop_btn_h, true)
-    
-    -- Border
-    if ss.ui.mouse_in(10, loop_btn_y, w - 20, loop_btn_h) then
-        gfx.set(1, 1, 1)  -- white hover
-    else
-        gfx.set(0.2, 0.2, 0.2)  -- dark border
-    end
-    gfx.rect(10, loop_btn_y, w - 20, loop_btn_h, false)
-    
-    -- Draw "LOOP ON" or "LOOP OFF" text centered, based on actual Reaper state
-    gfx.set(0, 0, 0)  -- black text
-    ss.set_font(56, true)
-    local loop_text = loop_is_enabled and "LOOP ON" or "LOOP OFF"
-    local text_width = gfx.measurestr(loop_text)
-    gfx.x, gfx.y = (w - 20) / 2 + 10 - text_width / 2, loop_btn_y + loop_btn_h / 2 - 28
-    gfx.drawstr(loop_text)
-    
-    -- Transport controls at bottom
-    local transport_y = h - 120
-    local btn_h = 100
-    local btn_w = 100
-    local spacing = 80
-    local center_x = (w - (btn_w * 3 + spacing * 2)) / 2
-    local is_playing = reaper.GetPlayStateEx(0) == 1
-    
-    -- << Back button
-    local back_x = center_x
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(back_x, transport_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(back_x, transport_y, btn_w, btn_h) then
-        gfx.set(0, 1, 1)
-        gfx.rect(back_x, transport_y, btn_w, btn_h, false)
-    else
-        gfx.set(0.3, 0.3, 0.3)
-        gfx.rect(back_x, transport_y, btn_w, btn_h, false)
-    end
-    
-    if ss.ui.was_clicked(back_x, transport_y, btn_w, btn_h) then
-        local new_idx = ss.ui.selected - 1
-        if new_idx < 1 then new_idx = #ss.songs end
-        ss.ui.selected = new_idx
-        ss.load_song(new_idx)
-        ss.log_file("Back: loaded song " .. new_idx)
-    end
-    
-    -- Draw << icon
-    gfx.set(0, 1, 1)
-    ss.set_font(48, true)
-    gfx.x, gfx.y = back_x + 20, transport_y + 25
-    gfx.drawstr("<<")
-    
-    -- Play/Stop toggle button (combined)
-    local play_stop_x = back_x + btn_w + spacing
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(play_stop_x, transport_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(play_stop_x, transport_y, btn_w, btn_h) then
-        if is_playing then
-            gfx.set(1, 0.4, 0.4)  -- lighter red for stop hover
-        else
-            gfx.set(0, 1, 0.4)  -- lighter green for play hover
-        end
-        gfx.rect(play_stop_x, transport_y, btn_w, btn_h, false)
-    else
-        if is_playing then
-            gfx.set(1, 0.2, 0.2)  -- red for stop
-        else
-            gfx.set(0, 1, 0)  -- green for play
-        end
-        gfx.rect(play_stop_x, transport_y, btn_w, btn_h, false)
-    end
-    
-    if ss.ui.was_clicked(play_stop_x, transport_y, btn_w, btn_h) then
-        if is_playing then
-            reaper.OnStopButtonEx(0)
-            ss.log_file("Stop pressed")
-        else
-            ss.load_song(ss.ui.selected)
-            ss.log_file("Play pressed for song " .. ss.ui.selected)
-        end
-    end
-    
-    -- Draw play triangle or stop square icon
-    if is_playing then
-        -- Draw stop square icon (red)
-        gfx.set(1, 0.2, 0.2)
-        gfx.rect(play_stop_x + 30, transport_y + 30, 40, 40, true)
-    else
-        -- Draw play triangle icon (green) - pointing right
-        gfx.set(0, 1, 0)
-        local cx = play_stop_x + 50
-        local cy = transport_y + 50
-        for x_offset = 0, 30 do
-            local top = cy - (x_offset * 30 / 30)
-            local bottom = cy + (x_offset * 30 / 30)
-            gfx.line(cx - 15 + 30 - x_offset, top, cx - 15 + 30 - x_offset, bottom)
-        end
-    end
-    
-    -- >> Skip button
-    local skip_x = play_stop_x + btn_w + spacing
-    gfx.set(0.08, 0.15, 0.2)
-    gfx.rect(skip_x, transport_y, btn_w, btn_h, true)
-    
-    if ss.ui.mouse_in(skip_x, transport_y, btn_w, btn_h) then
-        gfx.set(0, 1, 1)
-        gfx.rect(skip_x, transport_y, btn_w, btn_h, false)
-    else
-        gfx.set(0.3, 0.3, 0.3)
-        gfx.rect(skip_x, transport_y, btn_w, btn_h, false)
-    end
-    
-    if ss.ui.was_clicked(skip_x, transport_y, btn_w, btn_h) then
-        local new_idx = ss.ui.selected + 1
-        if new_idx > #ss.songs then new_idx = 1 end
-        ss.ui.selected = new_idx
-        ss.load_song(new_idx)
-        ss.log_file("Skip: loaded song " .. new_idx)
-    end
-    
-    -- Draw >> icon
-    gfx.set(0, 1, 1)
-    ss.set_font(48, true)
-    gfx.x, gfx.y = skip_x + 20, transport_y + 25
-    gfx.drawstr(">>")
+    -- Draw main UI using modular components
+    ui_comp.draw_header(ss, setlist_module, utils)
+    ui_comp.draw_header_buttons(ss, utils)
+    ui_comp.draw_song_list(ss, utils)
+    ui_comp.draw_loop_button(ss, utils)
+    ui_comp.draw_transport_controls(ss, utils)
 end
 
 function ss.main()
