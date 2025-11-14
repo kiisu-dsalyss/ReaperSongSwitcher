@@ -79,6 +79,7 @@ ed.load_dialog_open = ed.load_dialog_open or false
 ed.create_dialog_open = ed.create_dialog_open or false
 ed.new_setlist_name = ed.new_setlist_name or ""
 ed.new_setlist_path = ed.new_setlist_path or ""
+ed.create_focus = ed.create_focus or "name"
 
 function ed.log(msg)
     if ENABLE_CONSOLE_OUTPUT then
@@ -252,7 +253,7 @@ end
 
 function ed.open_load_dialog()
     -- Open file browser to select a setlist.json file
-    local success, filepath = reaper.GetUserFileNameForRead(ed.script_dir, "Load Setlist", "setlist.json")
+    local success, filepath = reaper.GetUserFileNameForRead(ed.script_dir, "Load Setlist", "*.json")
     if success and filepath and filepath ~= "" then
         ed.log("Selected setlist: " .. filepath)
         ed.setlist_file = filepath
@@ -425,7 +426,7 @@ function ed.draw_ui()
     gfx.rect(save_x, top_button_y, top_button_w, top_button_h, 1)
     if ed.mouse_in(save_x, top_button_y, top_button_w, top_button_h) then
         gfx.set(1, 0.5, 1)  -- lighter magenta on hover
-        gfx.rect(save_x, top_button_y, top_button_h, top_button_h, 1)
+        gfx.rect(save_x, top_button_y, top_button_w, top_button_h, 1)
     end
     if ed.was_clicked(save_x, top_button_y, top_button_w, top_button_h) then
         ed.save_json()
@@ -435,12 +436,11 @@ function ed.draw_ui()
     gfx.x, gfx.y = save_x + top_button_w/2 - 16, top_button_y + top_button_h/2 - 8
     gfx.drawstr("SAVE")
     
-    -- Dirty indicator
     -- Dirty indicator - neon yellow
     if ed.dirty then
         gfx.set(1, 1, 0)  -- neon yellow
         ed.set_font(12, true)
-        gfx.x, gfx.y = save_x - 100, save_y + 8
+        gfx.x, gfx.y = x + 5, top_button_y + 10
         gfx.drawstr("● UNSAVED")
     end
     
@@ -779,10 +779,21 @@ function ed.draw_ui()
         gfx.x, gfx.y = dialog_x + 20, field_y
         gfx.drawstr("SETLIST NAME:")
         
-        -- Name input field
+        -- Name input field (clickable to focus)
         local name_field_h = 35
         local name_field_y = field_y + 22
-        gfx.set(0.1, 0.2, 0.25)  -- dark blue field
+        if ed.mouse_in(dialog_x + 20, name_field_y, dialog_w - 40, name_field_h) then
+            if ed.was_clicked(dialog_x + 20, name_field_y, dialog_w - 40, name_field_h) then
+                ed.create_focus = "name"
+            end
+        end
+        
+        -- Highlight the focused field - orange for focused, dark for unfocused
+        if (ed.create_focus or "") == "name" then
+            gfx.set(1, 0.6, 0)  -- orange border for focused
+        else
+            gfx.set(0.1, 0.2, 0.25)  -- dark blue for unfocused
+        end
         gfx.rect(dialog_x + 20, name_field_y, dialog_w - 40, name_field_h, 1)
         
         -- Clear text area
@@ -794,6 +805,17 @@ function ed.draw_ui()
         gfx.x, gfx.y = dialog_x + 25, name_field_y + 8
         gfx.drawstr(ed.new_setlist_name)
         
+        -- Blinking cursor for focused field
+        if (ed.create_focus or "") == "name" then
+            ed.set_font(14, false)
+            local text_w, text_h = gfx.measurestr(ed.new_setlist_name)
+            local cursor_x = dialog_x + 25 + text_w
+            gfx.set(1, 1, 1)
+            if (reaper.time_precise() * 2) % 1 < 0.5 then
+                gfx.rect(cursor_x, name_field_y + 5, 2, 24, 1)
+            end
+        end
+        
         -- Base path field - neon orange label
         local path_y = field_y + 70
         gfx.set(1, 0.6, 0)  -- orange
@@ -801,57 +823,43 @@ function ed.draw_ui()
         gfx.x, gfx.y = dialog_x + 20, path_y
         gfx.drawstr("BASE PATH:")
         
-        -- Path input field (clickable to browse)
+        -- Path input field (clickable to focus)
         local path_field_h = 35
         local path_field_y = path_y + 22
         
-        if ed.mouse_in(dialog_x + 20, path_field_y, dialog_w - 60, path_field_h) then
-            gfx.set(1, 0.6, 0)  -- orange border on hover
-        else
-            gfx.set(0.1, 0.2, 0.25)  -- dark blue field
-        end
-        gfx.rect(dialog_x + 20, path_field_y, dialog_w - 60, path_field_h, 1)
-        
-        -- Click to browse for path
-        if ed.was_clicked(dialog_x + 20, path_field_y, dialog_w - 60, path_field_h) then
-            local success, dirpath = reaper.GetUserFileNameForRead("", "Select Base Path", "")
-            if success and dirpath and dirpath ~= "" then
-                -- Get directory from file path if file was selected
-                dirpath = dirpath:match("(.*/)")  or dirpath
-                ed.new_setlist_path = dirpath
-                ed.log("Selected base path: " .. dirpath)
+        if ed.mouse_in(dialog_x + 20, path_field_y, dialog_w - 40, path_field_h) then
+            if ed.was_clicked(dialog_x + 20, path_field_y, dialog_w - 40, path_field_h) then
+                ed.create_focus = "path"
             end
         end
+        
+        -- Highlight the focused field - orange for focused, dark for unfocused
+        if (ed.create_focus or "") == "path" then
+            gfx.set(1, 0.6, 0)  -- orange border for focused
+        else
+            gfx.set(0.1, 0.2, 0.25)  -- dark blue for unfocused
+        end
+        gfx.rect(dialog_x + 20, path_field_y, dialog_w - 40, path_field_h, 1)
         
         -- Clear text area
         gfx.set(0.25, 0.25, 0.25)
-        gfx.rect(dialog_x + 22, path_field_y + 2, dialog_w - 64, path_field_h - 4, 1)
+        gfx.rect(dialog_x + 22, path_field_y + 2, dialog_w - 44, path_field_h - 4, 1)
         
-        gfx.set(0.7, 0.7, 0.7)
+        gfx.set(0.8, 0.8, 0.8)
         ed.set_font(12, false)
         gfx.x, gfx.y = dialog_x + 25, path_field_y + 8
-        gfx.drawstr(ed.new_setlist_path ~= "" and ed.truncate_text(ed.new_setlist_path, dialog_w - 90) or "(click to select)")
+        gfx.drawstr(ed.new_setlist_path ~= "" and ed.truncate_text(ed.new_setlist_path, dialog_w - 90) or "(type or paste path)")
         
-        -- Browse button
-        local browse_btn_w = 30
-        local browse_x = dialog_x + dialog_w - browse_btn_w - 20
-        gfx.set(1, 0.6, 0)  -- orange
-        gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
-        if ed.mouse_in(browse_x, path_field_y, browse_btn_w, path_field_h) then
-            gfx.set(1, 0.8, 0.3)  -- lighter orange on hover
-            gfx.rect(browse_x, path_field_y, browse_btn_w, path_field_h, 1)
-        end
-        if ed.was_clicked(browse_x, path_field_y, browse_btn_w, path_field_h) then
-            local success, dirpath = reaper.GetUserFileNameForRead("", "Select Base Path", "")
-            if success and dirpath and dirpath ~= "" then
-                dirpath = dirpath:match("(.*/)")  or dirpath
-                ed.new_setlist_path = dirpath
+        -- Blinking cursor for focused field
+        if (ed.create_focus or "") == "path" then
+            ed.set_font(12, false)
+            local text_w, text_h = gfx.measurestr(ed.new_setlist_path)
+            local cursor_x = dialog_x + 25 + text_w
+            gfx.set(1, 1, 1)
+            if (reaper.time_precise() * 2) % 1 < 0.5 then
+                gfx.rect(cursor_x, path_field_y + 5, 2, 24, 1)
             end
         end
-        gfx.set(0, 0, 0)  -- black text
-        ed.set_font(11, true)
-        gfx.x, gfx.y = browse_x + 4, path_field_y + 9
-        gfx.drawstr("...")
         
         -- Buttons at bottom
         local btn_x = dialog_x + 20
@@ -1002,6 +1010,38 @@ function ed.main()
                     ed.edit_name = ed.edit_name .. c
                 else
                     ed.edit_path = ed.edit_path .. c
+                end
+            end
+        end
+    end
+    
+    -- Handle keyboard input when in create dialog
+    if ed.create_dialog_open then
+        local char = gfx.getchar()
+        if char ~= -1 then
+            if char == 8 then
+                -- Backspace: delete last character
+                if (ed.create_focus or "") == "name" and #ed.new_setlist_name > 0 then
+                    ed.new_setlist_name = ed.new_setlist_name:sub(1, -2)
+                elseif (ed.create_focus or "") == "path" and #ed.new_setlist_path > 0 then
+                    ed.new_setlist_path = ed.new_setlist_path:sub(1, -2)
+                end
+            elseif char == 9 then
+                -- Tab: switch focus
+                ed.create_focus = ((ed.create_focus or "name") == "name") and "path" or "name"
+            elseif char == 13 then
+                -- Enter: create the setlist
+                ed.finish_create()
+            elseif char == 27 then
+                -- Escape: cancel
+                ed.close_create_dialog()
+            elseif char >= 32 and char < 127 then
+                -- Regular printable character
+                local c = string.char(char)
+                if (ed.create_focus or "") == "name" then
+                    ed.new_setlist_name = ed.new_setlist_name .. c
+                elseif (ed.create_focus or "") == "path" then
+                    ed.new_setlist_path = ed.new_setlist_path .. c
                 end
             end
         end
