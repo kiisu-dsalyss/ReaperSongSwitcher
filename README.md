@@ -72,8 +72,6 @@ Full-featured transport control interface with:
 
 ![Transport UI with background image](screenshots/SwitcherTransport.jpg)
 
-![Transport UI with background image](screenshots/SwitcherTransport.png)
-
 #### `switcher.lua` (Headless Auto-Switch)
 
 Background auto-switch script without UI:
@@ -97,13 +95,33 @@ Full gfx-based UI editor for managing your setlist:
 
 ![Setlist Editor](screenshots/SetlistEditor.jpg)
 
-![Setlist Editor](screenshots/SetlistEditor.png)
-
 ## Setup
+
+### Prerequisites
+
+- Reaper 6.20+
+- Git (optional, for cloning the repository)
 
 ### Option 1: Easy Install (Recommended)
 
+**macOS:**
 ```bash
+bash install.sh
+```
+
+**Linux:**
+```bash
+bash install.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+# PowerShell as Administrator
+bash install.sh
+```
+
+Or using Command Prompt:
+```cmd
 bash install.sh
 ```
 
@@ -111,9 +129,24 @@ This installs all scripts and modules to Reaper's Scripts folder.
 
 ### Option 2: Manual Setup
 
-Copy all files to:
+**macOS:**
+```bash
+cp -r * ~/Library/Application\ Support/REAPER/Scripts/ReaperSongSwitcher/
 ```
-~/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher/
+
+**Linux:**
+```bash
+cp -r * ~/.config/REAPER/Scripts/ReaperSongSwitcher/
+```
+
+**Windows (PowerShell):**
+```powershell
+Copy-Item -Recurse -Force ./* "$env:APPDATA\REAPER\Scripts\ReaperSongSwitcher\"
+```
+
+Or using Command Prompt:
+```cmd
+xcopy /E /I /Y * "%APPDATA%\REAPER\Scripts\ReaperSongSwitcher\"
 ```
 
 **Directory structure after installation:**
@@ -125,7 +158,6 @@ ReaperSongSwitcher/
 ├── setlist_editor.lua
 ├── config.json
 ├── setlist.json
-├── Hacked-KerX.ttf
 └── modules/
     ├── state.lua
     ├── config.lua
