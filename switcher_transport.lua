@@ -27,6 +27,10 @@ local PREFERRED_FONT = "Menlo"
 ss.config_file = ss.script_dir .. "/config.json"
 ss.current_font = PREFERRED_FONT  -- Will be loaded from config
 ss.font_size_multiplier = 1.0  -- Will be loaded from config (1.0 = 100%, 1.2 = 120%, etc)
+ss.window_x = ss.window_x or 100  -- Will be loaded from config
+ss.window_y = ss.window_y or 100  -- Will be loaded from config
+ss.window_w = ss.window_w or 700  -- Will be loaded from config
+ss.window_h = ss.window_h or 750  -- Will be loaded from config
 
 function ss.load_config()
     local f = io.open(ss.config_file, "r")
@@ -53,12 +57,57 @@ function ss.load_config()
         ss.font_size_multiplier = 1.0  -- Default
     end
     
+    -- Load window position and size
+    local wx = string.match(content, '"window_x"%s*:%s*(%d+)')
+    local wy = string.match(content, '"window_y"%s*:%s*(%d+)')
+    local ww = string.match(content, '"window_w"%s*:%s*(%d+)')
+    local wh = string.match(content, '"window_h"%s*:%s*(%d+)')
+    
+    if wx then ss.window_x = tonumber(wx) end
+    if wy then ss.window_y = tonumber(wy) end
+    if ww then ss.window_w = tonumber(ww) end
+    if wh then ss.window_h = tonumber(wh) end
+    
+    ss.log_transport("Loaded window position: x=" .. (ss.window_x or "default") .. " y=" .. (ss.window_y or "default"))
+    
     return true
+end
+
+function ss.save_window_position()
+    -- Store window position and size in ExtState so we can restore it on next run
+    reaper.SetExtState("ReaperSongSwitcher", "window_x", tostring(math.floor(gfx.x)), true)
+    reaper.SetExtState("ReaperSongSwitcher", "window_y", tostring(math.floor(gfx.y)), true)
+    reaper.SetExtState("ReaperSongSwitcher", "window_w", tostring(gfx.w), true)
+    reaper.SetExtState("ReaperSongSwitcher", "window_h", tostring(gfx.h), true)
+    ss.log_transport("Saved window state: x=" .. math.floor(gfx.x) .. " y=" .. math.floor(gfx.y) .. " w=" .. gfx.w .. " h=" .. gfx.h)
+end
+
+function ss.load_window_state()
+    -- Load saved window position and size from ExtState
+    local x = reaper.GetExtState("ReaperSongSwitcher", "window_x")
+    local y = reaper.GetExtState("ReaperSongSwitcher", "window_y")
+    local w = reaper.GetExtState("ReaperSongSwitcher", "window_w")
+    local h = reaper.GetExtState("ReaperSongSwitcher", "window_h")
+    
+    if x ~= "" and y ~= "" and w ~= "" and h ~= "" then
+        ss.window_x = tonumber(x) or 100
+        ss.window_y = tonumber(y) or 100
+        ss.window_w = tonumber(w) or 700
+        ss.window_h = tonumber(h) or 750
+        ss.log_transport("Loaded window state: x=" .. ss.window_x .. " y=" .. ss.window_y .. " w=" .. ss.window_w .. " h=" .. ss.window_h)
+        return true
+    else
+        ss.window_x = 100
+        ss.window_y = 100
+        ss.window_w = 700
+        ss.window_h = 750
+    end
+    return false
 end
 
 function ss.save_config(font_name, multiplier)
     multiplier = multiplier or ss.font_size_multiplier or 1.0
-    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "font_size_multiplier": ' .. string.format("%.2f", multiplier) .. ',\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
+    local content = '{\n  "ui_font": "' .. font_name .. '",\n  "font_size_multiplier": ' .. string.format("%.2f", multiplier) .. ',\n  "window_x": ' .. (ss.window_x or 100) .. ',\n  "window_y": ' .. (ss.window_y or 100) .. ',\n  "window_w": ' .. (ss.window_w or 700) .. ',\n  "window_h": ' .. (ss.window_h or 750) .. ',\n  "available_fonts": [\n    "Arial",\n    "Menlo",\n    "Courier New",\n    "Courier",\n    "Monaco",\n    "Helvetica"\n  ]\n}\n'
     local f = io.open(ss.config_file, "w")
     if f then
         f:write(content)
@@ -105,6 +154,7 @@ ss.available_fonts = ss.available_fonts or {}  -- Will be populated by get_syste
 ss.font_picker_scroll = ss.font_picker_scroll or 0
 ss.font_picker_dragging = ss.font_picker_dragging or false
 ss.font_picker_drag_offset = ss.font_picker_drag_offset or 0
+ss.window_save_counter = ss.window_save_counter or 0  -- Counter for periodic window position saves
 
 -- Get all available system fonts
 function ss.get_system_fonts()
@@ -311,6 +361,9 @@ function ss.draw_font_picker()
     local h = gfx.h
     local dialog_w = 480
     local dialog_h = 680
+    -- Ensure the dialog always fits inside the gfx window (prevents Close from being offscreen)
+    dialog_w = math.min(dialog_w, math.max(200, w - 40))
+    dialog_h = math.min(dialog_h, math.max(180, h - 40))
     local dialog_x = (w - dialog_w) / 2
     local dialog_y = (h - dialog_h) / 2
     
@@ -356,8 +409,9 @@ function ss.draw_font_picker()
     local list_y = search_y + 40
     -- Make the list container smaller so the controls + close button fit inside the dialog
     local list_h = dialog_h - 220
-    local item_h = 24  -- Bigger rows for better readability
-    local max_visible = math.floor(list_h / item_h)
+    -- Scale the item height slightly with the global font multiplier so spacing stays sensible
+    local item_h = math.max(18, math.floor(24 * ss.font_size_multiplier))  -- Bigger rows for readability
+    local max_visible = math.max(1, math.floor(list_h / item_h))
     local scrollbar_w = 12
     local list_w = dialog_w - 20 - scrollbar_w - 5
     
@@ -365,7 +419,8 @@ function ss.draw_font_picker()
     local scroll_delta = gfx.mouse_wheel
     if scroll_delta ~= 0 then
         local step = 3  -- scroll N rows per wheel tick
-        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll - scroll_delta * step, math.max(0, #filtered_fonts - max_visible)))
+        local max_scroll_wheel = math.max(0, #filtered_fonts - max_visible)
+        ss.font_picker_scroll = math.max(0, math.min(ss.font_picker_scroll - scroll_delta * step, max_scroll_wheel))
         gfx.mouse_wheel = 0
     end
     
@@ -419,10 +474,16 @@ function ss.draw_font_picker()
     if #filtered_fonts > max_visible then
         local scrollbar_x = dialog_x + dialog_w - scrollbar_w - 10
         local scrollbar_h = list_h
-        local max_scroll = math.max(1, #filtered_fonts - max_visible)
-        local scroll_ratio = ss.font_picker_scroll / max_scroll
+        local max_scroll = math.max(0, #filtered_fonts - max_visible)
+
+        -- Protect against division by zero if something odd happens
+        local scroll_ratio = 0
+        if max_scroll > 0 then
+            scroll_ratio = ss.font_picker_scroll / max_scroll
+        end
+
         local thumb_h = math.max(20, scrollbar_h * (max_visible / #filtered_fonts))
-        local thumb_y = list_y + scroll_ratio * (scrollbar_h - thumb_h)
+        local thumb_y = list_y + (scroll_ratio * math.max(0, (scrollbar_h - thumb_h)))
 
         -- Scrollbar track
         gfx.set(0.05, 0.1, 0.15)
@@ -436,7 +497,10 @@ function ss.draw_font_picker()
         if ss.ui.was_clicked(scrollbar_x, list_y, scrollbar_w, scrollbar_h) then
             local mx, my = gfx.mouse_x, gfx.mouse_y
             -- position click relative to track
-            local rel = (my - list_y) / (scrollbar_h - thumb_h)
+            local rel = 0
+            if scrollbar_h - thumb_h > 0 then
+                rel = (my - list_y) / (scrollbar_h - thumb_h)
+            end
             rel = math.max(0, math.min(1, rel))
             ss.font_picker_scroll = math.floor(rel * max_scroll + 0.5)
         end
@@ -454,7 +518,10 @@ function ss.draw_font_picker()
                 local my = gfx.mouse_y
                 local new_thumb_y = my - ss.font_picker_drag_offset
                 new_thumb_y = math.max(list_y, math.min(list_y + scrollbar_h - thumb_h, new_thumb_y))
-                local rel = (new_thumb_y - list_y) / (scrollbar_h - thumb_h)
+                local rel = 0
+                if scrollbar_h - thumb_h > 0 then
+                    rel = (new_thumb_y - list_y) / (scrollbar_h - thumb_h)
+                end
                 ss.font_picker_scroll = math.floor(rel * max_scroll + 0.5)
             end
         end
@@ -669,13 +736,14 @@ function ss.ui.draw()
     if ss.ui.was_clicked(10, loop_btn_y, w - 20, loop_btn_h) then
         -- Toggle Reaper's loop state via action 1068 (Toggle loop)
         reaper.Main_OnCommand(1068, 0)
-        -- Update our tracking
-        ss.ui.loop_enabled = not ss.ui.loop_enabled
         
-        ss.log_file("Loop " .. (ss.ui.loop_enabled and "ENABLED" or "DISABLED"))
+        ss.log_file("Loop toggled via button")
     end
     
-    local loop_is_enabled = ss.ui.loop_enabled
+    -- Always read the actual loop state from Reaper, don't cache it
+    -- This ensures sync even if the user toggles loop via keyboard/menu/other UI
+    local loop_state = reaper.GetSetRepeat(-1)
+    local loop_is_enabled = (loop_state == 1)
     
     -- Calculate pulse effect based on tempo
     local tempo = reaper.Master_GetTempo()
@@ -948,6 +1016,13 @@ function ss.main()
         ss.draw_font_picker()
     end
     
+    -- Periodically save window position (every 30 frames)
+    ss.window_save_counter = ss.window_save_counter + 1
+    if ss.window_save_counter >= 30 then
+        ss.save_window_position()
+        ss.window_save_counter = 0
+    end
+    
     -- Update mouse state
     ss.ui.last_mouse_cap = gfx.mouse_cap
     gfx.update()
@@ -955,12 +1030,24 @@ function ss.main()
     reaper.defer(ss.main)
 end
 
--- Initialize gfx window
-gfx.init("REAPER Song Switcher - Transport", 700, 750, 0)
-gfx.dock(-1)
+-- Initialize gfx window with remembered size
+ss.load_window_state()
 
--- Load system fonts on startup
+-- Create window with saved dimensions
+gfx.init("REAPER Song Switcher - Transport", ss.window_w or 700, ss.window_h or 750, 0)
+
+-- Load system fonts and config on startup
 ss.load_config()
 ss.get_system_fonts()
+
+-- Dock the window so REAPER remembers its position
+-- Using dock flag 257 (DOCKFLAG_RIGHT) like the setlist editor does
+if gfx.dock(-1) == 0 then
+    -- Not docked yet, apply docking
+    gfx.dock(257)  -- DOCKFLAG_RIGHT
+    ss.log_transport("Docking window to REAPER layout")
+end
+
+ss.log_transport("Window initialized with size " .. (ss.window_w or 700) .. "x" .. (ss.window_h or 750) .. " and docked for position persistence")
 
 ss.main()
