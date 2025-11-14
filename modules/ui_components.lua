@@ -7,9 +7,22 @@ local ui_comp = {}
 function ui_comp.draw_header(ss, setlist_module, utils, image_loader, bg_image)
     local w, h = gfx.w, gfx.h
     
+    -- Debug: log image state
+    if bg_image then
+        if not ss._image_debug_logged then
+            ss.log_transport("DEBUG: bg_image exists, buffer_idx=" .. tostring(bg_image.buffer_idx))
+            ss._image_debug_logged = true
+        end
+    end
+    
     -- Draw background image if available, otherwise use solid color
     if bg_image and image_loader then
-        image_loader.draw_centered_background(bg_image, 0, 0, w, h, 0.08, 0.12, 0.15)
+        local drew_img = image_loader.draw_centered_background(bg_image, 0, 0, w, h, 0.08, 0.12, 0.15)
+        if not drew_img then
+            -- Fallback if image draw failed
+            gfx.set(0.08, 0.12, 0.15)
+            gfx.rect(0, 0, w, h, true)
+        end
     else
         -- Fallback to solid color background
         gfx.set(0.08, 0.12, 0.15)
