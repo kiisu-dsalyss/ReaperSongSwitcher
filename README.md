@@ -6,9 +6,29 @@ Lua scripts for Reaper that automatically switch between project files during li
 
 Automatically switches between project files during live performances by detecting when each song reaches its **End marker**, then loading and playing the next song in the setlist. Manual transport controls (play, stop, skip) let you override or navigate as needed.
 
+## Architecture
+
+Modular Lua design with 9 focused modules:
+
+```
+switcher_transport.lua - Main entry point + loop/UI control
+├── modules/state.lua - State initialization
+├── modules/config.lua - Configuration persistence
+├── modules/fonts.lua - Font system integration
+├── modules/ui.lua - Dialog rendering
+├── modules/ui_components.lua - Main UI components
+├── modules/input.lua - Keyboard/mouse input handling
+├── modules/playback.lua - Song loading & auto-switch logic
+├── modules/setlist.lua - JSON parsing for setlists
+└── modules/utils.lua - Logging and helper functions
+```
+
 ## Scripts Included
 
-### `switcher_transport.lua` (Main UI - Recommended)
+### Main Scripts
+
+#### `switcher_transport.lua` (Main UI - Recommended)
+
 Full-featured transport control interface with:
 
 - **Setlist display** - Shows all songs in the queue with current/selected highlighting
@@ -19,15 +39,21 @@ Full-featured transport control interface with:
 - **Cyberpunk styling** - Dark blue background with neon cyan/magenta/green accents
 - **File clicking** - Click any song in the list to select it, then press Play
 - **Manual navigation** - Use << and >> buttons to jump songs
+- **Font picker** - Gear icon in header to customize UI font and size
+- **Auto-switch detection** - Watches for End markers and switches songs automatically
 
-### `switcher.lua` (Headless Auto-Switch)
+#### `switcher.lua` (Headless Auto-Switch)
+
 Background auto-switch script without UI:
+
 - Pure auto-switching based on loop detection
 - No visual feedback
 - Use if you prefer minimal overhead or keyboard control
 
-### `setlist_editor.lua` (Setlist Editor)
+#### `setlist_editor.lua` (Setlist Editor)
+
 Full gfx-based UI editor for managing your setlist:
+
 - Add/edit/delete songs
 - Drag to reorder
 - File picker for easy path selection
@@ -41,16 +67,39 @@ Full gfx-based UI editor for managing your setlist:
 bash install.sh
 ```
 
-This installs all scripts to Reaper's Scripts folder.
+This installs all scripts and modules to Reaper's Scripts folder.
 
 ### Option 2: Manual Setup
 
-Copy all `.lua` files and `setlist.json` to:
+Copy all files to:
 ```
 ~/Library/Application Support/REAPER/Scripts/ReaperSongSwitcher/
 ```
 
+**Directory structure after installation:**
+
+```
+ReaperSongSwitcher/
+├── switcher_transport.lua (main script)
+├── switcher.lua
+├── setlist_editor.lua
+├── config.json
+├── setlist.json
+├── Hacked-KerX.ttf
+└── modules/
+    ├── state.lua
+    ├── config.lua
+    ├── fonts.lua
+    ├── ui.lua
+    ├── ui_components.lua
+    ├── input.lua
+    ├── playback.lua
+    ├── setlist.lua
+    └── utils.lua
+```
+
 **Configure `setlist.json`:**
+
 ```json
 {
   "base_path": "/full/path/to/your/songs",
@@ -65,16 +114,19 @@ Copy all `.lua` files and `setlist.json` to:
 ## Running
 
 ### Transport UI (Recommended for Live)
+
 `Scripts > ReaperSongSwitcher > switcher_transport.lua`
 
 Shows a clean transport interface with the big LOOP button and song list.
 
 ### Auto-Switch Only
+
 `Scripts > ReaperSongSwitcher > switcher.lua`
 
 Runs silently in the background, no UI.
 
 ### Edit Setlist
+
 `Scripts > ReaperSongSwitcher > setlist_editor.lua`
 
 Open to add/edit/reorder songs in your setlist.
@@ -82,10 +134,23 @@ Open to add/edit/reorder songs in your setlist.
 ## How It Works
 
 **End Marker Detection:**
+
 - Looks for a marker named `"End"` in each project - this marks the exact switch point
 - When playback reaches or passes this marker, the script automatically stops and loads the next song
 - Also detects if playback stops near the End marker (within 2 seconds) to catch Reaper's auto-stop before the exact marker position
 - Waits one frame for the next project to load, then starts playing
+
+**Module Responsibilities:**
+
+- **state.lua** - Initializes all global state variables with safe defaults
+- **config.lua** - Loads/saves font configuration from JSON
+- **fonts.lua** - Detects and manages system fonts
+- **ui.lua** - Renders font picker and setlist load dialogs
+- **ui_components.lua** - Draws main UI (header, buttons, song list, loop toggle, transport controls)
+- **input.lua** - Handles keyboard and mouse input
+- **playback.lua** - Manages song loading and auto-switch detection with End marker logic
+- **setlist.lua** - Parses and manages setlist JSON files
+- **utils.lua** - Provides logging and UI helper functions
 
 **Important:** Each song project MUST have an `"End"` marker. Without it, that song won't auto-switch and you'll need to manually skip.
 

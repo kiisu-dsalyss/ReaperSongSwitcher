@@ -22,8 +22,9 @@ echo "📁 Installing to: $REAPER_SCRIPTS"
 
 # Create the directory if it doesn't exist
 mkdir -p "$REAPER_SCRIPTS"
+mkdir -p "$REAPER_SCRIPTS/modules"
 
-# Copy all scripts
+# Copy main scripts
 cp "$SCRIPT_DIR/switcher.lua" "$REAPER_SCRIPTS/switcher.lua"
 echo "✅ Installed switcher.lua"
 
@@ -33,24 +34,42 @@ echo "✅ Installed switcher_transport.lua"
 cp "$SCRIPT_DIR/setlist_editor.lua" "$REAPER_SCRIPTS/setlist_editor.lua"
 echo "✅ Installed setlist_editor.lua"
 
+# Copy all modules
+echo ""
+echo "📦 Installing modules..."
+for module in modules/*.lua; do
+    if [ -f "$module" ]; then
+        MODULE_NAME=$(basename "$module")
+        cp "$module" "$REAPER_SCRIPTS/modules/$MODULE_NAME"
+        echo "✅ Installed $MODULE_NAME"
+    fi
+done
+
+echo ""
+echo "📦 Copying assets and generating font list..."
+
 # Copy font if it exists
 if [ -f "$SCRIPT_DIR/Hacked-KerX.ttf" ]; then
     cp "$SCRIPT_DIR/Hacked-KerX.ttf" "$REAPER_SCRIPTS/Hacked-KerX.ttf"
     echo "✅ Installed Hacked-KerX.ttf font"
 fi
 
-# Copy helper script and generate fonts list
+# Generate fonts list
 if [ -f "$SCRIPT_DIR/get_fonts.sh" ]; then
     cp "$SCRIPT_DIR/get_fonts.sh" "$REAPER_SCRIPTS/get_fonts.sh"
     chmod +x "$REAPER_SCRIPTS/get_fonts.sh"
-    echo "✅ Installed get_fonts.sh"
     
-    # Generate fonts_list.txt
     if sh "$REAPER_SCRIPTS/get_fonts.sh" > "$REAPER_SCRIPTS/fonts_list.txt" 2>&1; then
         FONT_COUNT=$(wc -l < "$REAPER_SCRIPTS/fonts_list.txt")
         echo "✅ Generated fonts_list.txt ($FONT_COUNT fonts)"
     else
-        echo "⚠️  Could not generate fonts_list.txt, will use fallback list"
+        echo "⚠️  Could not generate fonts_list.txt - system fonts will be auto-detected"
+    fi
+else
+    # Try pre-generated list if get_fonts.sh doesn't exist
+    if [ -f "$SCRIPT_DIR/fonts_list.txt" ]; then
+        cp "$SCRIPT_DIR/fonts_list.txt" "$REAPER_SCRIPTS/fonts_list.txt"
+        echo "✅ Installed fonts_list.txt"
     fi
 fi
 
@@ -64,10 +83,13 @@ fi
 
 echo ""
 echo "=================================================="
-echo "✅ Installation complete!"
+echo "✅ Installation complete"
 echo "=================================================="
 echo ""
-echo "📝 Edit setlist.json to add your songs"
-echo "🎵 Run switcher_transport.lua from REAPER Scripts menu (recommended)"
-echo "🎵 Or run switcher.lua for headless auto-switching"
+echo "📝 Next: Edit setlist.json to add your songs"
+echo "   Base path should point to your .rpp project files"
+echo ""
+echo "🎵 To use:"
+echo "   - Run switcher_transport.lua from Scripts menu (main UI)"
+echo "   - Or run switcher.lua for headless auto-switch"
 echo ""

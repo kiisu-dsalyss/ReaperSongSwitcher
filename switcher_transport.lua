@@ -24,6 +24,7 @@ local ui_module = dofile(ss.script_dir .. "/modules/ui.lua")
 local playback_module = dofile(ss.script_dir .. "/modules/playback.lua")
 local ui_comp = dofile(ss.script_dir .. "/modules/ui_components.lua")
 local input = dofile(ss.script_dir .. "/modules/input.lua")
+local state_module = dofile(ss.script_dir .. "/modules/state.lua")
 
 function ss.log_transport(msg)
     utils.log_transport(ss.script_dir, msg)
@@ -95,30 +96,8 @@ function ss.set_font(size, bold)
     end
 end
 
-ss.setlist_file = ss.script_dir .. "/setlist.json"
-ss.current_setlist_path = ss.current_setlist_path or ss.setlist_file  -- Currently loaded setlist
-ss.songs = ss.songs or {}
-ss.base_path = ss.base_path or ""
-ss.current_index = ss.current_index or 1
-ss.last_pos = ss.last_pos or 0
-ss.init_done = ss.init_done or false
-ss.switch_cooldown = ss.switch_cooldown or 0
-ss.auto_switch_state = ss.auto_switch_state or 0  -- 0=idle, 1=loaded_waiting_to_play
-ss.auto_switch_next_idx = ss.auto_switch_next_idx or 0
-ss.loop_check_counter = ss.loop_check_counter or 0
-ss.show_load_setlist_dialog = ss.show_load_setlist_dialog or false  -- Show load setlist dialog
-ss.ui = ss.ui or {}
-ss.ui.selected = ss.ui.selected or 1
-ss.ui.last_mouse_cap = ss.ui.last_mouse_cap or 0
-ss.font_logged = ss.font_logged or false  -- Debug flag for font logging
-ss.show_font_picker = ss.show_font_picker or false  -- Show font picker dialog
-ss.font_search = ss.font_search or ""  -- Font search string
-ss.setlist_load_input = ss.setlist_load_input or ""  -- Setlist load input string
-ss.available_fonts = ss.available_fonts or {}  -- Will be populated by get_system_fonts()
-ss.font_picker_scroll = ss.font_picker_scroll or 0
-ss.font_picker_dragging = ss.font_picker_dragging or false
-ss.font_picker_drag_offset = ss.font_picker_drag_offset or 0
-ss.window_save_counter = ss.window_save_counter or 0  -- Counter for periodic window position saves
+-- Initialize all state with defaults
+state_module.init_all(ss, ss.script_dir)
 
 -- Get all available system fonts
 function ss.get_system_fonts()
@@ -131,6 +110,11 @@ end
 
 function ss.log_file(msg)
     utils.log_switcher(ss.script_dir, msg)
+end
+
+-- Simple console log (optional, used by setlist loader)
+function ss.log(msg)
+    ss.log_file(msg)
 end
 
 function ss.load_json_from_path(filepath)
