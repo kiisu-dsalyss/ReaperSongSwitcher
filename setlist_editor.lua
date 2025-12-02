@@ -168,6 +168,12 @@ function ed.main()
     -- Draw main UI
     ui_draw.draw_ui(ed, ui_utils, songs_module, io_module, json_editor)
     
+    -- Check if close was requested
+    if ed.close_requested then
+        gfx.quit()
+        return
+    end
+    
     reaper.defer(ed.main)
 end
 

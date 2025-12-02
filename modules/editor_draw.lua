@@ -27,14 +27,34 @@ function ui_draw.draw_ui(ed, ui_utils, songs_mod, io_mod, json_editor_mod)
     gfx.x, gfx.y = x, y
     gfx.drawstr("SETLIST EDITOR")
     
-    -- Top right buttons: JSON, Load, Create, Save
+    -- Top right buttons: Close, JSON, Load, Create, Save
     local top_button_h = 35
     local top_button_w = 85
     local top_button_y = y + 2
-    local save_x = gfx.w - top_button_w - 10
+    local close_size = 28
+    local close_x = gfx.w - close_size - 10
+    local save_x = close_x - top_button_w - 10
     local create_x = save_x - top_button_w - 5
     local load_x = create_x - top_button_w - 5
     local json_x = load_x - top_button_w - 5
+    
+    -- Close button (X) - top right corner
+    if ui_utils.mouse_in(close_x - 3, top_button_y, close_size + 6, close_size + 6) then
+        gfx.set(1, 0.3, 0.3)  -- red hover
+    else
+        gfx.set(0.6, 0.6, 0.6)  -- gray
+    end
+    
+    -- Draw X
+    local cx = close_x + close_size / 2
+    local cy = top_button_y + close_size / 2
+    local xr = close_size / 3
+    gfx.line(cx - xr, cy - xr, cx + xr, cy + xr)
+    gfx.line(cx + xr, cy - xr, cx - xr, cy + xr)
+    
+    if ui_utils.was_clicked(ed, close_x - 3, top_button_y, close_size + 6, close_size + 6) then
+        ed.close_requested = true
+    end
     
     -- JSON button - neon green
     gfx.set(0, 1, 0.5)

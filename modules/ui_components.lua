@@ -52,12 +52,38 @@ end
 function ui_comp.draw_header_buttons(ss, utils)
     local w = gfx.w
     local gear_size = 24
+    local close_size = 24
     
-    -- Load Setlist button (left of gear icon)
+    -- Close button (X) - top right corner
+    local close_btn_x = w - close_size - 10
+    local close_btn_y = 13
+    
+    if ss.ui.mouse_in(close_btn_x - 3, close_btn_y - 3, close_size + 6, close_size + 6) then
+        gfx.set(1, 0.3, 0.3)  -- red hover
+    else
+        gfx.set(0.6, 0.6, 0.6)  -- gray
+    end
+    
+    -- Draw X
+    local cx = close_btn_x + close_size / 2
+    local cy = close_btn_y + close_size / 2
+    local xr = close_size / 3
+    gfx.line(cx - xr, cy - xr, cx + xr, cy + xr)
+    gfx.line(cx + xr, cy - xr, cx - xr, cy + xr)
+    
+    if ss.ui.was_clicked(close_btn_x - 3, close_btn_y - 3, close_size + 6, close_size + 6) then
+        ss.close_requested = true
+    end
+    
+    -- Load Setlist button (left of close button)
     local load_btn_w = 60
     local load_btn_h = 28
-    local load_btn_x = w - gear_size - 15 - load_btn_w - 15
+    local load_btn_x = close_btn_x - load_btn_w - 15
     local load_btn_y = 11
+    
+    -- Config gear button (left of load button)
+    local gear_btn_x = load_btn_x - gear_size - 15
+    local gear_btn_y = 13
     
     gfx.set(0.08, 0.15, 0.2)
     gfx.rect(load_btn_x, load_btn_y, load_btn_w, load_btn_h, true)
@@ -78,10 +104,7 @@ function ui_comp.draw_header_buttons(ss, utils)
         ss.show_load_setlist_dialog = true
     end
     
-    -- Config gear button (top right)
-    local gear_btn_x = w - gear_size - 15
-    local gear_btn_y = 13
-    
+    -- Draw gear button
     if ss.ui.mouse_in(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
         gfx.set(1, 0.5, 1)  -- magenta hover
     else
@@ -89,8 +112,8 @@ function ui_comp.draw_header_buttons(ss, utils)
     end
     
     -- Draw proper gear icon
-    local cx = gear_btn_x + gear_size / 2
-    local cy = gear_btn_y + gear_size / 2
+    local gcx = gear_btn_x + gear_size / 2
+    local gcy = gear_btn_y + gear_size / 2
     local outer_r = gear_size / 2 - 2
     local inner_r = outer_r * 0.6
     local tooth_depth = outer_r * 0.3
@@ -102,11 +125,11 @@ function ui_comp.draw_header_buttons(ss, utils)
     for i = 0, num_teeth - 1 do
         -- Outer tooth point
         local angle_tooth = (i * math.pi * 2 / num_teeth)
-        table.insert(points, {cx + math.cos(angle_tooth) * outer_r, cy + math.sin(angle_tooth) * outer_r})
+        table.insert(points, {gcx + math.cos(angle_tooth) * outer_r, gcy + math.sin(angle_tooth) * outer_r})
         
         -- Inner valley point
         local angle_valley = ((i + 0.5) * math.pi * 2 / num_teeth)
-        table.insert(points, {cx + math.cos(angle_valley) * inner_r, cy + math.sin(angle_valley) * inner_r})
+        table.insert(points, {gcx + math.cos(angle_valley) * inner_r, gcy + math.sin(angle_valley) * inner_r})
     end
     
     -- Draw filled gear
@@ -120,7 +143,7 @@ function ui_comp.draw_header_buttons(ss, utils)
     end
     
     -- Draw center hole
-    gfx.circle(cx, cy, inner_r * 0.35, true)
+    gfx.circle(gcx, gcy, inner_r * 0.35, true)
     
     if ss.ui.was_clicked(gear_btn_x - 5, gear_btn_y - 5, gear_size + 10, gear_size + 10) then
         ss.show_config_menu = true
