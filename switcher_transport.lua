@@ -254,6 +254,13 @@ function ss.main()
     input.update_mouse_state(ss)
     gfx.update()
     
+    -- Check if close was requested
+    if ss.close_requested then
+        ss.save_window_position()
+        gfx.quit()
+        return
+    end
+    
     reaper.defer(ss.main)
 end
 
